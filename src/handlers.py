@@ -601,6 +601,7 @@ async def button_callback(update: Update, context: CallbackContext):
         f'set_{SETTING_RATING_FILTER}': handle_set_rating_filter,
         'show_series': handle_search_series_books,
         'back_to_series': handle_back_to_series,
+        'reset_ratings': handle_reset_ratings,
     }
 
     # Добавим обработку toggle рейтингов
@@ -1016,7 +1017,7 @@ async def news_cmd(update: Update, context: CallbackContext):
 # Добавим функцию для получения эмодзи рейтинга
 def get_rating_emoji(rating):
     """Возвращает эмодзи для рейтинга"""
-    return BOOK_RATINGS.get(rating, ("⚪", ""))[0]
+    return BOOK_RATINGS.get(rating, ("⚪️", ""))[0]
 
 
 # Добавим обработчик для настройки рейтинга
@@ -1041,7 +1042,7 @@ def create_rating_filter_keyboard(current_ratings, options):
 
     for value, display_text in options:
         is_selected = str(value) in current_ratings
-        emoji = "✅" if is_selected else "⚪"
+        emoji = "✅" if is_selected else ""
         button_text = f"{emoji} {display_text}"
 
         keyboard.append([InlineKeyboardButton(
