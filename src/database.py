@@ -5,7 +5,7 @@ from collections import namedtuple
 from constants import FLIBUSTA_DB_BOOKS_PATH, FLIBUSTA_DB_SETTINGS_PATH, FLIBUSTA_DB_LOGS_PATH, SEARCH_CRITERIA
 from utils import split_query_into_words, extract_criteria, remove_punctuation
 
-Book = namedtuple('Book', ['FileName', 'Title', 'SearchTitle', 'SearchLang', 'Author', 'LastName', 'FirstName', 'MiddleName', 'Genre', 'GenreParent', 'Folder', 'Ext', 'BookSize', 'SearchYear', 'UpdateDate'])
+Book = namedtuple('Book', ['FileName', 'Title', 'SearchTitle', 'SearchLang', 'Author', 'LastName', 'FirstName', 'MiddleName', 'Genre', 'GenreParent', 'Folder', 'Ext', 'BookSize', 'SearchYear', 'LibRate', 'UpdateDate'])
 UserSettings = namedtuple('UserSettings',['User_ID', 'MaxBooks', 'Lang', 'DateSortOrder', 'BookFormat', 'LastNewsDate', 'IsBlocked'])
 
 # SQL-запросы
@@ -14,6 +14,7 @@ SQL_QUERY_BOOKS = """
         Books.Title,
         Books.SearchLang,
         Books.BookSize,
+        Books.LibRate, 
         case 
           when BookSize <= 800 * 1024 then 'less800'
           when BookSize > 800 * 1024 then 'more800'
@@ -616,16 +617,16 @@ class DatabaseBooks(Database):
                 self._cached_langs = cursor.fetchall()
         return self._cached_langs
 
-    def search_books(self, query, max_books, lang, sort_order, size_limit):
+    def search_books(self, query, max_books, lang, sort_order, size_limit, rating_filter=None):
         # Разбиваем запрос на критерии и их значения
         criteries = extract_criteria(query)
         if criteries:
             # Если критерии заданы, формируем условие поиска книг по этим критериям
-            sql_where, params = self.build_sql_where_by_criteria(criteries, lang, size_limit)
+            sql_where, params = self.build_sql_where_by_criteria(criteries, lang, size_limit, rating_filter)
         else:
             # Если критерии не заданы, формируем условие поиска книг по словам в запросе
             words = split_query_into_words(query)
-            sql_where, params = self.build_sql_where(words, lang, size_limit)
+            sql_where, params = self.build_sql_where(words, lang, size_limit, rating_filter)
 
         # Строим запросы для поиска книг и подсчёта количества найденных книг
         sql_query, sql_query_cnt = self.build_sql_queries(sql_where, max_books, sort_order)
@@ -696,7 +697,7 @@ class DatabaseBooks(Database):
         return  condition, value
 
     @staticmethod
-    def build_sql_where(words, lang, size_limit):
+    def build_sql_where(words, lang, size_limit, rating_filter=None):
         """
         Создает SQL-условие WHERE на основе списка слов и их операторов.
         """
@@ -714,6 +715,14 @@ class DatabaseBooks(Database):
         # Добавляем ограничение по размеру книг, если задан в настройках пользователя
         if size_limit:
             conditions.append(f"BookSizeCat = '{size_limit}'")
+
+        # ДОБАВЛЯЕМ ФИЛЬТРАЦИЮ ПО РЕЙТИНГУ
+        if rating_filter and rating_filter != '':
+            rating_values = [r.strip() for r in rating_filter.split(',') if r.strip()]
+            if rating_values:
+                rating_condition = f"LibRate IN ({', '.join(['?'] * len(rating_values))})"
+                conditions.append(rating_condition)
+                params.extend(rating_values)
 
         sql_where = "WHERE " + " AND ".join(conditions) if conditions else "WHERE 1=2"
         return sql_where, params
@@ -739,7 +748,7 @@ class DatabaseBooks(Database):
         return sql_query, sql_query_cnt
 
     @staticmethod
-    def build_sql_where_by_criteria(criteria_tuples, lang, size_limit):
+    def build_sql_where_by_criteria(criteria_tuples, lang, size_limit, rating_filter=None):
         # Базовая часть SQL-запроса
         sql_where = "WHERE "
 
@@ -786,6 +795,14 @@ class DatabaseBooks(Database):
         # Добавляем ограничение по размеру книг, если задан в настройках пользователя
         if size_limit:
             conditions.append(f"BookSizeCat = '{size_limit}'")
+
+        # ДОБАВЛЯЕМ ФИЛЬТРАЦИЮ ПО РЕЙТИНГУ
+        if rating_filter and rating_filter != '':
+            rating_values = [r.strip() for r in rating_filter.split(',') if r.strip()]
+            if rating_values:
+                rating_condition = f"LibRate IN ({', '.join(['?'] * len(rating_values))})"
+                conditions.append(rating_condition)
+                params.extend(rating_values)
 
         # Объединяем условия через AND
         if conditions:
@@ -849,16 +866,16 @@ class DatabaseBooks(Database):
                 'languages_count': 0
             }
 
-    def search_series(self, query, max_books, lang, size_limit):
+    def search_series(self, query, max_books, lang, size_limit, rating_filter=None):
         """Ищет серии по запросу"""
         # Разбиваем запрос на критерии
         criteries = extract_criteria(query)
 
         if criteries:
-            sql_where, params = self.build_sql_where_by_criteria(criteries, lang, size_limit)
+            sql_where, params = self.build_sql_where_by_criteria(criteries, lang, size_limit, rating_filter)
         else:
             words = split_query_into_words(query)
-            sql_where, params = self.build_sql_where(words, lang, size_limit)
+            sql_where, params = self.build_sql_where(words, lang, size_limit, rating_filter)
 
         # Модифицируем запрос для поиска серий
         sql_query = f"""

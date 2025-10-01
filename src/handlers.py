@@ -10,7 +10,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 from database import DatabaseBooks, DatabaseSettings
 from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, BOT_NEWS, \
     SETTING_MAX_BOOKS, SETTING_LANG_SEARCH, SETTING_SORT_ORDER, SETTING_SIZE_LIMIT, \
-    SETTING_BOOK_FORMAT, SETTING_SEARCH_TYPE, SETTING_OPTIONS, SETTING_TITLES
+    SETTING_BOOK_FORMAT, SETTING_SEARCH_TYPE, SETTING_OPTIONS, SETTING_TITLES, SETTING_RATING_FILTER, BOOK_RATINGS
 from utils import format_size, extract_cover_from_fb2, extract_metadata_from_fb2, format_metadata_message, \
     get_platform_recommendations, download_book_with_filename, upload_to_tmpfiles
 from logger import logger
@@ -64,7 +64,9 @@ def create_books_keyboard(page, pages_of_books, search_context=SEARCH_TYPE_BOOKS
         if books_in_page:
             # keyboard = []
             for book in books_in_page:
-                text = f"{book.Title} ({book.LastName} {book.FirstName}) {format_size(book.BookSize)}/{book.Genre}"
+                # ДОБАВЛЯЕМ ЭМОДЗИ РЕЙТИНГА
+                rating_emoji = get_rating_emoji(book.LibRate)
+                text = f"{rating_emoji} {book.Title} ({book.LastName} {book.FirstName}) {format_size(book.BookSize)}/{book.Genre}"
                 if book.SearchYear != 0:
                     text += f"/{str(book.SearchYear)}"
                 keyboard.append([InlineKeyboardButton(
@@ -298,6 +300,7 @@ def create_settings_menu():
         ("Ограничение на размер книг", SETTING_SIZE_LIMIT),
         ("Формат скачивания книг", SETTING_BOOK_FORMAT),
         ("Тип поиска (книги/серии)", SETTING_SEARCH_TYPE),
+        ("Фильтр по рейтингу книг", SETTING_RATING_FILTER),
     ]
 
     keyboard = [[InlineKeyboardButton(text, callback_data=f"set_{key}")] for text, key in settings]
@@ -378,13 +381,14 @@ async def handle_search_books(update: Update, context: CallbackContext):
     )
 
     size_limit = context.user_data.get(SETTING_SIZE_LIMIT)
+    rating_filter = context.user_data.get(SETTING_RATING_FILTER, '')
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
     context.user_data[SEARCH_CONTEXT] = SEARCH_TYPE_BOOKS  # Сохраняем контекст
 
     books, found_books_count = DB_BOOKS.search_books(
         query, user_params.MaxBooks, user_params.Lang,
-        user_params.DateSortOrder, size_limit
+        user_params.DateSortOrder, size_limit, rating_filter
     )
 
     # Проверяем, найдены ли книги
@@ -421,13 +425,14 @@ async def handle_search_series(update: Update, context: CallbackContext):
     )
 
     size_limit = context.user_data.get(SETTING_SIZE_LIMIT)
+    rating_filter = context.user_data.get(SETTING_RATING_FILTER, '')
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
     context.user_data[SEARCH_CONTEXT] = SEARCH_TYPE_SERIES  # Сохраняем контекст
 
     # Ищем серии
     series, found_series_count = DB_BOOKS.search_series(
-        query_text, user_params.MaxBooks, user_params.Lang, size_limit
+        query_text, user_params.MaxBooks, user_params.Lang, size_limit, rating_filter
     )
 
     if series or found_series_count > 0:
@@ -472,6 +477,7 @@ async def handle_search_series_books(query, context, action, params):
         user = query.from_user
         user_params = DB_SETTINGS.get_user_settings(user.id)
         size_limit = context.user_data.get(SETTING_SIZE_LIMIT)
+        rating_filter = context.user_data.get(SETTING_RATING_FILTER, '')
 
         # Ищем книги серии в комбинации с предыдущим запросом
         query_text = f"{context.user_data['series_search_query']}, серия: '{search_series_name}'"
@@ -482,7 +488,7 @@ async def handle_search_series_books(query, context, action, params):
 
         books, found_books_count = DB_BOOKS.search_books(
             query_text, user_params.MaxBooks, user_params.Lang,
-            user_params.DateSortOrder, size_limit
+            user_params.DateSortOrder, size_limit, rating_filter
         )
 
         if books:
@@ -592,9 +598,15 @@ async def button_callback(update: Update, context: CallbackContext):
         f'set_{SETTING_SIZE_LIMIT}': handle_set_size_limit,
         f'set_{SETTING_BOOK_FORMAT}': handle_set_book_format,
         f'set_{SETTING_SEARCH_TYPE}': handle_set_search_type,
+        f'set_{SETTING_RATING_FILTER}': handle_set_rating_filter,
         'show_series': handle_search_series_books,
         'back_to_series': handle_back_to_series,
     }
+
+    # Добавим обработку toggle рейтингов
+    if action.startswith('toggle_rating_'):
+        await handle_toggle_rating(query, context, action, params)
+        return
 
     # Прямой поиск обработчика в словаре
     if action in action_handlers:
@@ -1000,3 +1012,90 @@ async def news_cmd(update: Update, context: CallbackContext):
         )
 
 
+# ===== РЕЙТИНГ КНИГ =====
+# Добавим функцию для получения эмодзи рейтинга
+def get_rating_emoji(rating):
+    """Возвращает эмодзи для рейтинга"""
+    return BOOK_RATINGS.get(rating, ("⚪", ""))[0]
+
+
+# Добавим обработчик для настройки рейтинга
+async def handle_set_rating_filter(query, context, action, params):
+    """Показывает настройки фильтра по рейтингу"""
+    current_value = context.user_data.get(SETTING_RATING_FILTER, '')
+
+    # Преобразуем текущее значение в список для отображения
+    current_ratings = current_value.split(',') if current_value else []
+
+    options = SETTING_OPTIONS[SETTING_RATING_FILTER]
+    reply_markup = create_rating_filter_keyboard(current_ratings, options)
+
+    await edit_or_reply_message(query, SETTING_TITLES[SETTING_RATING_FILTER], reply_markup)
+    logger.log_user_action(query.from_user, "showed rating filter setting")
+
+
+# Создадим специальную клавиатуру для фильтра рейтинга (множественный выбор)
+def create_rating_filter_keyboard(current_ratings, options):
+    """Создает клавиатуру для множественного выбора рейтингов"""
+    keyboard = []
+
+    for value, display_text in options:
+        is_selected = str(value) in current_ratings
+        emoji = "✅" if is_selected else "⚪"
+        button_text = f"{emoji} {display_text}"
+
+        keyboard.append([InlineKeyboardButton(
+            button_text,
+            callback_data=f"toggle_rating_{value}"
+        )])
+
+    # Кнопка сброса
+    keyboard.append([InlineKeyboardButton("🔄 Сбросить все", callback_data="reset_ratings")])
+
+    # Кнопка назад
+    keyboard += create_back_button()
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# Добавим функции обработки рейтингов
+async def handle_toggle_rating(query, context, action, params):
+    """Обрабатывает переключение рейтинга в фильтре"""
+    rating_value = action.removeprefix('toggle_rating_')
+    current_filter = context.user_data.get(SETTING_RATING_FILTER, '')
+    current_ratings = current_filter.split(',') if current_filter else []
+
+    if rating_value in current_ratings:
+        # Убираем рейтинг из фильтра
+        current_ratings.remove(rating_value)
+    else:
+        # Добавляем рейтинг в фильтр
+        current_ratings.append(rating_value)
+
+    # Обновляем фильтр
+    new_filter = ','.join(current_ratings)
+    context.user_data[SETTING_RATING_FILTER] = new_filter
+
+    # Обновляем клавиатуру
+    options = SETTING_OPTIONS[SETTING_RATING_FILTER]
+    reply_markup = create_rating_filter_keyboard(current_ratings, options)
+
+    try:
+        await query.edit_message_text(SETTING_TITLES[SETTING_RATING_FILTER], reply_markup=reply_markup)
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise e
+
+    logger.log_user_action(query.from_user, f"toggled rating filter: {new_filter}")
+
+
+async def handle_reset_ratings(query, context, action, params):
+    """Сбрасывает все выбранные рейтинги"""
+    context.user_data[SETTING_RATING_FILTER] = ''
+
+    # Обновляем клавиатуру
+    options = SETTING_OPTIONS[SETTING_RATING_FILTER]
+    reply_markup = create_rating_filter_keyboard([], options)
+
+    await query.edit_message_text(SETTING_TITLES[SETTING_RATING_FILTER], reply_markup=reply_markup)
+    logger.log_user_action(query.from_user, "reset rating filter")
