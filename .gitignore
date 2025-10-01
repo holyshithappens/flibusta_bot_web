@@ -1,11 +1,6 @@
 # Секретные файлы
 .env.vps
-.env.local
-.env.prod
-deploy.sh
-db_backup.sh
-db_restore.sh
-Makefile
+.env
 
 # Папки с данными и бэкапами
 /data/
@@ -32,3 +27,8 @@ docker-compose.yml
 # Системные файлы
 .DS_Store
 Thumbs.db
+
+deploy.sh
+db_backup.sh
+db_restore.sh
+Makefile
