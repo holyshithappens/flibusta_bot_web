@@ -1,0 +1,11 @@
+# .dockerignore
+.git
+.gitignore
+.env
+*.pyc
+__pycache__
+.vscode
+.idea
+*.log
+*.tmp
+*.local
