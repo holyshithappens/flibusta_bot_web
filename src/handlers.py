@@ -943,6 +943,7 @@ async def about_cmd(update: Update, context: CallbackContext):
 • 📖 Скачивание в форматах fb2, epub, mobi
 • ⚙️ Пользовательские настройки поиска
 • 📊 Информация о книгах (при выборе fb2 формата)
+• 🔵 Фильтрация и вывод книг по рейтингу
 {reader_recommendations}
 📞 <b>Обратная связь:</b>
 • 📧 Email: <code>{CONTACT_INFO['email']}</code>
@@ -982,7 +983,7 @@ async def news_cmd(update: Update, context: CallbackContext):
             return
 
         # Берем последние 3 новости
-        latest_news = BOT_NEWS[:3]
+        latest_news = BOT_NEWS[-3:]
 
         news_text = "📢 <b>Последние новости бота:</b>\n\n"
 
