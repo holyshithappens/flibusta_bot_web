@@ -3,18 +3,110 @@ import os
 import sys
 import unicodedata
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
+import xml.etree.ElementTree as ET
+import chardet
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
-# Добавляем путь к src в Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
-
-from src.utils import extract_metadata_from_fb2
-#from src.constants import FLIBUSTA_DB_BOOKS_PATH  # , PREFIX_FILE_PATH
+# # Добавляем путь к src в Python path
+# project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, project_root)
+#
+# from src.utils import extract_metadata_from_fb2
+# #from src.constants import FLIBUSTA_DB_BOOKS_PATH  # , PREFIX_FILE_PATH
 
 FLIBUSTA_DB_BOOKS_PATH = "/media/sf_FlibustaBot/data/Flibusta_FB2_local.hlc2"
 PREFIX_FILE_PATH = "/media/sf_FlibustaFiles/"
+
+# Пространство имен FB2
+FB2_NAMESPACE = "http://www.gribuser.ru/xml/fictionbook/2.0"
+XLINK_NAMESPACE = "http://www.w3.org/1999/xlink"
+
+# Словарь с пространствами имен для использования в XPath
+NAMESPACES = {
+    "fb": FB2_NAMESPACE,
+    "xlink": XLINK_NAMESPACE,
+}
+
+
+def extract_metadata_from_fb2(file):
+    try:
+        ## Парсим XML из байтов
+        #tree = ET.parse(file)
+        #root = ET.parse(file).getroot()
+
+        # Пытаемся прочитать файл с автоматическим определением кодировки
+        content = file.read()
+
+        # Определяем кодировку (если не UTF-8)
+        try:
+            xml_content = content.decode('utf-8')
+        except UnicodeDecodeError:
+            encoding = chardet.detect(content)['encoding'] or 'windows-1251'
+            xml_content = content.decode(encoding, errors='replace')
+
+        # Парсим XML с обработкой ошибок
+        try:
+            root = ET.fromstring(xml_content)
+        except ET.ParseError:
+            # Пробуем починить битый XML (базовый случай)
+            xml_content = xml_content.split('<?xml', 1)[-1]  # Удаляем все до <?xml
+            xml_content = '<?xml' + xml_content.split('>', 1)[0] + '>' + xml_content.split('>', 1)[1]
+            root = ET.fromstring(xml_content)
+
+        # Извлекаем метаданные
+        metadata = {
+            "title": None,
+            "author": {
+                "first_name": None,
+                "last_name": None,
+            },
+            "publisher": None,
+            "year": None,
+            "city": None,
+            "isbn": None,
+        }
+
+        # Название книги
+        title_element = root.find(".//fb:book-title", namespaces=NAMESPACES)
+        if title_element is not None:
+            metadata["title"] = title_element.text
+
+        # Автор
+        first_name_element = root.find(".//fb:author/fb:first-name", namespaces=NAMESPACES)
+        if first_name_element is not None:
+            metadata["author"]["first_name"] = first_name_element.text
+
+        last_name_element = root.find(".//fb:author/fb:last-name", namespaces=NAMESPACES)
+        if last_name_element is not None:
+            metadata["author"]["last_name"] = last_name_element.text
+
+        # Издательство
+        publisher_element = root.find(".//fb:publish-info/fb:publisher", namespaces=NAMESPACES)
+        if publisher_element is not None:
+            metadata["publisher"] = publisher_element.text
+
+        # Год издания
+        year_element = root.find(".//fb:publish-info/fb:year", namespaces=NAMESPACES)
+        if year_element is not None:
+            metadata["year"] = year_element.text
+
+        # Город
+        city_element = root.find(".//fb:publish-info/fb:city", namespaces=NAMESPACES)
+        if city_element is not None:
+            metadata["city"] = city_element.text
+
+        # ISBN
+        isbn_element = root.find(".//fb:publish-info/fb:isbn", namespaces=NAMESPACES)
+        if isbn_element is not None:
+            metadata["isbn"] = isbn_element.text
+        return metadata
+    except Exception as e:
+        print(f"Ошибка при извлечении метаданных: {e}")
+        return None
+    finally:
+        file.seek(0)
+
 
 def process_city(city):
     """
