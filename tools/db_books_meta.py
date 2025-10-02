@@ -1,3 +1,5 @@
+import datetime
+import re
 import sqlite3
 import os
 import sys
@@ -27,6 +29,55 @@ NAMESPACES = {
     "fb": FB2_NAMESPACE,
     "xlink": XLINK_NAMESPACE,
 }
+
+def clean_year(year_str):
+    """Очищает и преобразует строку с годом в целое число.
+    Возвращает 0 если год не распознан."""
+    if not year_str or str(year_str).strip() == "":
+        return 0
+
+    year_str = str(year_str).strip()
+
+    # 1. Проверка текстовых дат формата "June 28th 2011" → 2011
+    text_date_match = re.search(
+        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?\s+(\d{4})",
+        year_str,
+        re.IGNORECASE
+    )
+    if text_date_match:
+        year = int(text_date_match.group(1))
+        if 1000 <= year <= datetime.now().year:
+            return year
+
+    # 2. Проверка формата DD.MM.YYYY ("12.01.2009" → 2009)
+    date_match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", year_str)
+    if date_match:
+        year = int(date_match.group(3))
+        if 1000 <= year <= datetime.now().year:
+            return year
+
+    # 3. Извлечение 4-значного года из начала строки ("2005 г." → 2005)
+    match = re.search(r"^(18|19|20)\d{2}", year_str)
+    if match:
+        year = int(match.group())
+        if 1000 <= year <= datetime.now().year:
+            return year
+
+    # 4. Обработка диапазонов ("2013-2014" → 2013)
+    range_match = re.search(r"(?P<first_year>(18|19|20)\d{2})\s*[-–]\s*(18|19|20)\d{2}", year_str)
+    if range_match:
+        first_year = int(range_match.group("first_year"))
+        if 1000 <= first_year <= datetime.now().year:
+            return first_year
+
+    # 5. Извлечение года из строк с мусором ("ISBN2005" → 2005)
+    digits_only = re.sub(r"[^0-9]", "", year_str)
+    if len(digits_only) == 4:
+        year = int(digits_only)
+        if 1000 <= year <= datetime.now().year:
+            return year
+
+    return 0  # Возвращаем 0 для нераспознанных годов
 
 
 def extract_metadata_from_fb2(file):
@@ -213,10 +264,12 @@ class BooksMetaManager:
                         # Безопасное преобразование в верхний регистр
                         publisher = metadata.get('publisher')
                         city = metadata.get('city')
+                        year = metadata.get('year')
 
                         # Обрабатываем поля для поиска с помощью process_city
                         search_publisher = publisher.upper() if publisher else None
                         search_city = process_city(city) if city else None
+                        search_year = clean_year(year) if year else None
 
                         return (
                             book_id,
@@ -224,6 +277,7 @@ class BooksMetaManager:
                             metadata.get('year'),
                             city,
                             metadata.get('isbn'),
+                            search_year,
                             search_publisher,
                             search_city
                         )
@@ -239,8 +293,8 @@ class BooksMetaManager:
             cursor = conn.cursor()
             cursor.executemany("""
             INSERT INTO Books_Meta (
-                BookID, Publisher, Year, City, ISBN, SearchPublisher, SearchCity
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                BookID, Publisher, Year, City, ISBN, SearchYear, SearchPublisher, SearchCity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, [m for m in metadata_list if m is not None])
             conn.commit()
 
