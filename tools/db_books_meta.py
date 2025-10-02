@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import sys
+import unicodedata
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
@@ -14,6 +15,45 @@ from src.utils import extract_metadata_from_fb2
 
 FLIBUSTA_DB_BOOKS_PATH = "/media/sf_FlibustaBot/data/Flibusta_FB2_local.hlc2"
 PREFIX_FILE_PATH = "/media/sf_FlibustaFiles/"
+
+def process_city(city):
+    """
+    Обрабатывает поле city согласно требованиям:
+    1) Если содержит цифры - возвращает None
+    2) Удаляет все символы кроме букв (включая диакритические), пробелов, точки, запятой, минуса, дефиса
+    3) Удаляет пробелы справа и слева
+    4) Переводит в верхний регистр
+    """
+    if city is None:
+        return None
+
+    # 1) Проверяем наличие цифр
+    if any(char.isdigit() for char in city):
+        return None
+
+    # 2) Удаляем все символы кроме букв (включая диакритические), пробелов, точки, запятой, минуса, дефиса
+    # Используем Unicode свойства для идентификации букв (включая диакритические)
+    processed_chars = []
+    for char in city:
+        # Проверяем, является ли символ буквой (включая диакритические)
+        if unicodedata.category(char).startswith('L'):
+            processed_chars.append(char)
+        # Разрешаем пробелы, точку, запятую, минус, дефис
+        #elif char in ' \t\n\r\f\v.,-\–—':  # пробелы, точка, запятая, разные типы дефисов
+        elif char in ' \t\n\r\f\v-\–—':  # пробелы, разные типы дефисов
+            processed_chars.append(char)
+        # Все остальные символы игнорируем
+
+    processed_city = ''.join(processed_chars)
+
+    # 3) Удаляем пробелы справа и слева
+    processed_city = processed_city.strip()
+
+    # 4) Переводим в верхний регистр
+    processed_city = processed_city.upper()
+
+    return processed_city if processed_city else None
+
 
 class BooksMetaManager:
     def __init__(self, db_path=FLIBUSTA_DB_BOOKS_PATH):
@@ -32,6 +72,7 @@ class BooksMetaManager:
                 Year TEXT,
                 City TEXT,
                 ISBN TEXT,
+                SearchYear INTEGER,
                 SearchPublisher TEXT, 
                 SearchCity TEXT,           
                 FOREIGN KEY (BookID) REFERENCES Books(BookID)
@@ -66,7 +107,8 @@ class BooksMetaManager:
             cursor.execute(query)
             return cursor.fetchall()
 
-    def process_book(self, book_info):
+    @staticmethod
+    def process_book(book_info):
         """Обрабатывает одну книгу и возвращает только необходимые метаданные"""
         book_id, folder, file_name, ext = book_info
         file_path = os.path.join(PREFIX_FILE_PATH, folder)
@@ -79,14 +121,19 @@ class BooksMetaManager:
                         # Безопасное преобразование в верхний регистр
                         publisher = metadata.get('publisher')
                         city = metadata.get('city')
+
+                        # Обрабатываем поля для поиска с помощью process_city
+                        search_publisher = publisher.upper() if publisher else None
+                        search_city = process_city(city) if city else None
+
                         return (
                             book_id,
-                            metadata.get('publisher'),
+                            publisher,
                             metadata.get('year'),
-                            metadata.get('city'),
+                            city,
                             metadata.get('isbn'),
-                            publisher.upper() if publisher else None,
-                            city.upper() if city else None
+                            search_publisher,
+                            search_city
                         )
                     else:
                         print(f"Ошибка обработки метаданных книги: Book_ID:{book_id}, Folder:{folder}, Filename:{file_name}")
