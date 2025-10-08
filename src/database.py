@@ -61,16 +61,45 @@ SQL_QUERY_BOOKS = """
     INNER JOIN Books_Meta ON Books_Meta.BookID = Books.BookID
 """
 
-SQL_QUERY_PARENT_GENRES = """
-    SELECT GenreAlias
-    FROM SearchGenres
-    WHERE ParentCode = '0'
+# SQL_QUERY_PARENT_GENRES = """
+#     SELECT GenreAlias
+#     FROM SearchGenres
+#     WHERE ParentCode = '0'
+# """
+
+SQL_QUERY_PARENT_GENRES_COUNT = """
+    SELECT 
+        Parent.GenreAlias,
+        COUNT(DISTINCT Genre_List.BookID) as book_count
+    FROM SearchGenres as Parent
+    LEFT JOIN SearchGenres as Child ON Child.ParentCode = Parent.GenreCode
+    LEFT JOIN Genre_List ON (
+        Genre_List.GenreCode = Child.GenreCode 
+        OR Genre_List.GenreCode = Parent.GenreCode
+    )
+    WHERE Parent.ParentCode = '0'
+    GROUP BY Parent.GenreAlias
+    --ORDER BY book_count DESC
+    ORDER BY Parent.GenreCode
 """
 
-SQL_QUERY_CHILDREN_GENRES = """
-    SELECT Genres.GenreAlias, Parent.GenreAlias AS ParentAlias
+# SQL_QUERY_CHILDREN_GENRES = """
+#     SELECT Genres.GenreAlias, Parent.GenreAlias AS ParentAlias
+#     FROM SearchGenres as Genres
+#     INNER JOIN SearchGenres AS Parent ON Parent.GenreCode = Genres.ParentCode
+# """
+
+SQL_QUERY_CHILDREN_GENRES_COUNT = """
+    SELECT 
+        Genres.GenreAlias,
+        COUNT(DISTINCT Genre_List.BookID) as book_count
     FROM SearchGenres as Genres
     INNER JOIN SearchGenres AS Parent ON Parent.GenreCode = Genres.ParentCode
+    LEFT JOIN Genre_List ON Genre_List.GenreCode = Genres.GenreCode
+    WHERE Parent.GenreAlias LIKE ?
+    GROUP BY Genres.GenreAlias
+    --ORDER BY book_count DESC
+    ORDER BY Genres.GenreCode
 """
 
 SQL_QUERY_LANGS = """
@@ -571,36 +600,44 @@ class DatabaseBooks(Database):
     def custom_collation(a, b):
         return (a.lower() > b.lower()) - (a.lower() < b.lower())
 
-    def get_parent_genres(self):
+    # def get_parent_genres(self):
+    #     """Получает родительские жанры с кешированием"""
+    #     if self._cached_parent_genres is None:
+    #         with self.connect() as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute(SQL_QUERY_PARENT_GENRES)
+    #             self._cached_parent_genres = cursor.fetchall()
+    #     return self._cached_parent_genres
+
+    def get_parent_genres_with_counts(self):
         """Получает родительские жанры с кешированием"""
-#        with self.connect() as conn:
-#            cursor = conn.cursor()
-#            cursor.execute(SQL_QUERY_PARENT_GENRES)
-#            results = cursor.fetchall()
-#        return results
         if self._cached_parent_genres is None:
             with self.connect() as conn:
                 cursor = conn.cursor()
-                cursor.execute(SQL_QUERY_PARENT_GENRES)
+                cursor.execute(SQL_QUERY_PARENT_GENRES_COUNT)
                 self._cached_parent_genres = cursor.fetchall()
         return self._cached_parent_genres
 
-    def get_genres(self, parent_genre):
-        """Получает дочерние жанры с кешированием"""
-#        with self.connect() as conn:
-#            cursor = conn.cursor()
-#            cursor.execute(SQL_QUERY_CHILDREN_GENRES + f"\n WHERE ParentAlias LIKE ?",(f'%{parent_genre}%',))
-#            results = cursor.fetchall()
-#        #return "\n".join([genre[0].strip() for genre in results])
-#        # Возвращаем список жанров вместо строки
-#        return [genre[0].strip() for genre in results if genre[0].strip()]
+    # def get_genres(self, parent_genre):
+    #     """Получает дочерние жанры с кешированием"""
+    #     if parent_genre not in self._cached_genres:
+    #         with self.connect() as conn:
+    #             cursor = conn.cursor()
+    #             cursor.execute(SQL_QUERY_CHILDREN_GENRES + f"\n WHERE ParentAlias LIKE ?", (f'%{parent_genre}%',))
+    #             results = cursor.fetchall()
+    #             # Кешируем результат
+    #             self._cached_genres[parent_genre] = [genre[0].strip() for genre in results if genre[0].strip()]
+    #     return self._cached_genres[parent_genre]
+
+    def get_genres_with_counts(self, parent_genre):
+        """Получает дочерние жанры с количеством книг и с кешированием"""
         if parent_genre not in self._cached_genres:
             with self.connect() as conn:
                 cursor = conn.cursor()
-                cursor.execute(SQL_QUERY_CHILDREN_GENRES + f"\n WHERE ParentAlias LIKE ?", (f'%{parent_genre}%',))
+                cursor.execute(SQL_QUERY_CHILDREN_GENRES_COUNT, (f'%{parent_genre}%',))
                 results = cursor.fetchall()
                 # Кешируем результат
-                self._cached_genres[parent_genre] = [genre[0].strip() for genre in results if genre[0].strip()]
+                self._cached_genres[parent_genre] = [(genre[0].strip(), genre[1]) for genre in results if genre[0].strip()]
         return self._cached_genres[parent_genre]
 
     def get_langs(self):
