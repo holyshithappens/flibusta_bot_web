@@ -4,7 +4,7 @@ from io import BytesIO
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from telegram.error import TimedOut, BadRequest
+from telegram.error import TimedOut, BadRequest, Forbidden
 from telegram.ext import CallbackContext, ConversationHandler
 
 from database import DatabaseBooks, DatabaseSettings
@@ -361,13 +361,24 @@ async def settings_cmd(update: Update, context: CallbackContext):
 
 async def handle_message(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг или серий)"""
-    search_type = context.user_data.get(SETTING_SEARCH_TYPE, 'books')
+    try:
+        user = update.effective_user
 
-    if search_type == 'series':
-        await handle_search_series(update, context)
-    else:
-        await handle_search_books(update, context)
+        search_type = context.user_data.get(SETTING_SEARCH_TYPE, 'books')
 
+        if search_type == 'series':
+            await handle_search_series(update, context)
+        else:
+            await handle_search_books(update, context)
+
+    except Forbidden as e:
+        if "bot was blocked by the user" in str(e):
+            print(f"Пользователь {update.effective_user.id} заблокировал бота")
+            return
+        raise e
+    except Exception as e:
+        print(f"Error in handle_message: {e}")
+        await update.message.reply_text("❌ Произошла ошибка при обработке запроса")
 
 async def handle_search_books(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг)"""
@@ -573,7 +584,13 @@ async def button_callback(update: Update, context: CallbackContext):
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
 
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        if "Query is too old" in str(e):
+            # Игнорируем устаревшие callback'ы
+            return
+        raise e
 
     data = query.data.split(':')
     action, *params = data

@@ -1,14 +1,42 @@
 #import configparser
 import os
 
-from telegram import BotCommand
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
+from telegram import BotCommand, Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, \
+    ConversationHandler, CallbackContext
 from telegram.request import HTTPXRequest
+from telegram.error import Forbidden, BadRequest, TimedOut
 
 from handlers import handle_message, button_callback, start_cmd, genres_cmd, langs_cmd, settings_cmd, donate_cmd, \
     help_cmd, about_cmd, news_cmd
 from admin import admin_cmd, cancel_auth, auth_password, AUTH_PASSWORD, handle_admin_buttons, ADMIN_BUTTONS
 from constants import FLIBUSTA_DB_BOOKS_PATH   # , FLIBUSTA_DB_SETTINGS_PATH
+
+
+async def error_handler(update: Update, context: CallbackContext):
+    """Глобальный обработчик ошибок"""
+    error = context.error
+
+    # Пользователь заблокировал бота
+    if isinstance(error, Forbidden) and "bot was blocked by the user" in str(error):
+        print(f"Пользователь заблокировал бота: {update.effective_user.id if update.effective_user else 'Unknown'}")
+        return
+
+    # Устаревший callback query
+    if isinstance(error, BadRequest) and "Query is too old" in str(error):
+        print(f"Устаревший callback query: {error}")
+        return
+
+    # Таймаут
+    if isinstance(error, TimedOut):
+        print(f"Таймаут запроса: {error}")
+        return
+
+    # Другие ошибки
+    print(f"Необработанная ошибка: {error}")
+    if update and update.effective_user:
+        print(f"User: {update.effective_user.id}")
+
 
 def check_files():
     # Проверяем доступность файлов и БД
@@ -38,6 +66,7 @@ async def set_commands(application: Application):
     ]
     await application.bot.set_my_commands(commands)
 
+
 def main():
     if not check_files():
         raise RuntimeError("Необходимые файлы или БД недоступны в контейнере.")
@@ -56,6 +85,8 @@ def main():
     request = HTTPXRequest(connect_timeout=60, read_timeout=60)
     #application = Application.builder().token(TOKEN).read_timeout(60).build()
     application = Application.builder().token(TOKEN).request(request).build()
+
+    application.add_error_handler(error_handler)
 
     # В первкю очередь добавляем обработчики администратора
     conv_handler = ConversationHandler(
