@@ -268,10 +268,19 @@ async def start_cmd(update: Update, context: CallbackContext):
 
 async def genres_cmd(update: Update, context: CallbackContext):
     """Показывает родительские жанры"""
-    results = DB_BOOKS.get_parent_genres()
-    keyboard = [[InlineKeyboardButton(genre[0], callback_data=f"show_genres:{genre[0]}")] for genre in results]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Посмотреть жанры:", reply_markup=reply_markup)
+    try:
+        results = DB_BOOKS.get_parent_genres_with_counts()
+        #keyboard = [[InlineKeyboardButton(genre[0], callback_data=f"show_genres:{genre[0]}")] for genre in results]
+        keyboard = []
+        for genre, count in results:
+            count_text = f"({count:,})".replace(","," ") if count else "(0)"
+            button_text = f"{genre} {count_text}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"show_genres:{genre}")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Посмотреть жанры:", reply_markup=reply_markup)
+    except Exception as e:
+        print(f"Error in genres_cmd: {e}")
+        await update.message.reply_text("❌ Ошибка при загрузке жанров")
 
     user = update.message.from_user
     logger.log_user_action(user, "viewed parent genres")
@@ -666,16 +675,22 @@ async def handle_send_file(query, context, action, params):
 
 async def handle_show_genres(query, context, action, params):
     """Показывает жанры выбранной категории"""
-    parent_genre = params[0]
-    genres = DB_BOOKS.get_genres(parent_genre)
+    try:
+       parent_genre = params[0]
+       genres = DB_BOOKS.get_genres_with_counts(parent_genre)
 
-    if genres:
-        genres_html = f"<b><code>{parent_genre}</code></b>\n\n"
-        for genre in genres:
-            genres_html += f"<code>{genre}</code>\n"
-        await query.message.reply_text(genres_html, parse_mode=ParseMode.HTML)
-    else:
-        await query.message.reply_text("❌ Жанры не найдены для этой категории", parse_mode=ParseMode.HTML)
+       if genres:
+           genres_html = f"<b><code>{parent_genre}</code></b>\n\n"
+           for genre,count in genres:
+               #genres_html += f"<code>{genre}</code>\n"
+               count_text = f" ({count:,})".replace(",", " ")  if count else " (0)"
+               genres_html += f"<code>{genre}</code>{count_text}\n"
+           await query.message.reply_text(genres_html, parse_mode=ParseMode.HTML)
+       else:
+           await query.message.reply_text("❌ Жанры не найдены для этой категории", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        print(f"Error in handle_show_genres: {e}")
+        await query.message.reply_text("❌ Ошибка при загрузке жанров")
 
     logger.log_user_action(query.from_user, "show genre", parent_genre)
 
@@ -946,11 +961,11 @@ async def about_cmd(update: Update, context: CallbackContext):
 <b>Flibusta Bot</b> - телеграм бот для поиска и скачивания книг непосредственно с сайта библиотеки Флибуста.
 
 📊 <b>Статистика БД библиотеки бота:</b>
-• 📚 Книг: <code>{stats['books_count']:,}</code>
-• 👥 Авторов: <code>{stats['authors_count']:,}</code>
-• 🏷️ Жанров: <code>{stats['genres_count']:,}</code>
-• 📖 Серий: <code>{stats['series_count']:,}</code>
-• 🌐 Языков: <code>{stats['languages_count']:,}</code>
+• 📚 Книг: <code>{f"{stats['books_count']:,}".replace(",", " ")}</code>
+• 👥 Авторов: <code>{f"{stats['authors_count']:,}".replace(",", " ")}</code>
+• 📖 Серий: <code>{f"{stats['series_count']:,}".replace(",", " ")}</code>
+• 🏷️ Жанров: <code>{stats['genres_count']}</code>
+• 🌐 Языков: <code>{stats['languages_count']}</code>
 • 📅 Обновлено: <code>{last_update_str}</code>
 • 🔢 Максимальный ID файла книги: <code>{stats['max_filename']}</code>
 
