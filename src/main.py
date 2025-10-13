@@ -1,5 +1,5 @@
 #import configparser
-import datetime
+from datetime import datetime
 import os
 
 from telegram import BotCommand, Update
@@ -12,50 +12,53 @@ from handlers import handle_message, button_callback, start_cmd, genres_cmd, lan
     help_cmd, about_cmd, news_cmd
 from admin import admin_cmd, cancel_auth, auth_password, AUTH_PASSWORD, handle_admin_buttons, ADMIN_BUTTONS
 from constants import FLIBUSTA_DB_BOOKS_PATH   # , FLIBUSTA_DB_SETTINGS_PATH
-from health import log_system_stats, cleanup_memory
+from health import log_system_stats
 
-MONITORING_INTERVAL=120
-CLEANUP_INTERVAL=240
-USER_LAST_ACTIVITY_INTERVAL=480
+MONITORING_INTERVAL=1800
+CLEANUP_INTERVAL=3600
 
 async def log_stats(context: CallbackContext):
     """Только логирование статистики"""
     stats = log_system_stats()
     print(f"📊 Stats: {stats['memory_used']:.1f}MB memory")
 
-async def perform_cleanup(context: CallbackContext):
-    """Периодическая очистка и мониторинг"""
-    try:
-        cleanup_memory()
-    except Exception as e:
-        print(f"Error in periodic cleanup: {e}")
+# async def perform_cleanup(context: CallbackContext):
+#     """Периодическая очистка и мониторинг"""
+#     try:
+#         cleanup_memory()
+#     except Exception as e:
+#         print(f"Error in periodic cleanup: {e}")
 
 async def cleanup_old_sessions(context: CallbackContext):
-    """Очистка старых пользовательских сессий"""
+    """Очистка данных поиска у неактивных пользователей"""
     try:
-        if hasattr(context, 'user_data') and context.user_data:
-            current_time = datetime.now()
-            users_to_remove = []
+        if hasattr(context, 'application') and hasattr(context.application, 'user_data'):
+            app = context.application
+            cleaned_count = 0
 
-            for user_id, user_data in context.user_data.items():
-                # Проверяем, что user_data - это словарь и содержит last_activity
-                if isinstance(user_data, dict) and 'last_activity' in user_data:
-                    last_activity = user_data['last_activity']
-                    # Проверяем, что last_activity - это datetime объект
-                    if isinstance(last_activity, datetime):
-                        time_diff = (current_time - last_activity).total_seconds()
-                        if time_diff > USER_LAST_ACTIVITY_INTERVAL:
-                            users_to_remove.append(user_id)
+            for user_id, user_data in app.user_data.items():
+                if isinstance(user_data, dict):
+                    last_activity = user_data.get('last_activity')
 
-            # Удаляем старые сессии
-            for user_id in users_to_remove:
-                del context.user_data[user_id]
+                    # Очищаем если неактивен более 1 часа
+                    if isinstance(last_activity, datetime) and (datetime.now() - last_activity).total_seconds() > CLEANUP_INTERVAL:
+                        # Очищаем данные поиска УДАЛЕНИЕМ ключей
+                        search_keys = [
+                            'BOOKS', 'PAGES_OF_BOOKS', 'FOUND_BOOKS_COUNT',
+                            'SERIES', 'PAGES_OF_SERIES', 'FOUND_SERIES_COUNT'
+                        ]
 
-            if users_to_remove:
-                print(f"🧹 Cleaned {len(users_to_remove)} old user sessions")
+                        for key in search_keys:
+                            if key in user_data:
+                                del user_data[key]
+
+                        cleaned_count += 1
+
+            if cleaned_count > 0:
+                print(f"🧹 Cleaned datasets of {cleaned_count} user(s)")
 
     except Exception as e:
-        print(f"❌ Error cleaning old sessions: {e}")
+        print(f"❌ Cleanup error: {e}")
 
 
 async def error_handler(update: Update, context: CallbackContext):
@@ -179,10 +182,8 @@ def main():
     if job_queue:
         # Периодический мониторинг
         job_queue.run_repeating(log_stats, interval=MONITORING_INTERVAL, first=10)
-        # Периодическая очистка памяти
-        job_queue.run_repeating(perform_cleanup, interval=CLEANUP_INTERVAL, first=CLEANUP_INTERVAL)
-        # Периодическое удаление старых пользовательских сессий
-        job_queue.run_repeating(cleanup_old_sessions, interval=USER_LAST_ACTIVITY_INTERVAL, first=USER_LAST_ACTIVITY_INTERVAL)
+        # Периодическая очистка старых пользовательских сессий
+        job_queue.run_repeating(cleanup_old_sessions, interval=CLEANUP_INTERVAL, first=CLEANUP_INTERVAL)
 
     application.run_polling()
 

@@ -25,10 +25,10 @@ def log_system_stats():
     logging.info(f"SYSTEM_STATS: {stats}")
     return stats
 
-def cleanup_memory():
-    """Принудительная очистка памяти"""
-    before = get_memory_usage()
-    gc.collect()
-    after = get_memory_usage()
-    logging.info(f"Memory cleanup: {before:.1f}MB -> {after:.1f}MB")
+# def cleanup_memory():
+#     """Принудительная очистка памяти"""
+#     before = get_memory_usage()
+#     gc.collect()
+#     after = get_memory_usage()
+#     logging.info(f"Memory cleanup: {before:.1f}MB -> {after:.1f}MB")
 
