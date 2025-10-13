@@ -8,7 +8,7 @@ from telegram.request import HTTPXRequest
 from telegram.error import Forbidden, BadRequest, TimedOut
 
 from handlers import handle_message, button_callback, start_cmd, genres_cmd, langs_cmd, settings_cmd, donate_cmd, \
-    help_cmd, about_cmd, news_cmd
+    help_cmd, about_cmd, news_cmd, handle_group_message
 from admin import admin_cmd, cancel_auth, auth_password, AUTH_PASSWORD, handle_admin_buttons, ADMIN_BUTTONS
 from constants import FLIBUSTA_DB_BOOKS_PATH   # , FLIBUSTA_DB_SETTINGS_PATH
 
@@ -120,7 +120,12 @@ def main():
     application.add_handler(CommandHandler("langs", langs_cmd))
     application.add_handler(CommandHandler("set", settings_cmd))
     application.add_handler(CommandHandler("donate", donate_cmd))
+    # Обработчик сообщений в боте
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Обработчик сообщений в группе
+    application.add_handler(
+        MessageHandler(filters.ChatType.GROUP & filters.TEXT & ~filters.COMMAND, handle_group_message))
+    # Обработчик кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
 
     # Устанавливаем меню команд

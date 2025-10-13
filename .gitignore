@@ -28,7 +28,7 @@ docker-compose.yml
 .DS_Store
 Thumbs.db
 
-deploy.sh
+deploy*.sh
 db_backup.sh
 db_restore.sh
 Makefile

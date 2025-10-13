@@ -604,14 +604,26 @@ async def button_callback(update: Update, context: CallbackContext):
     data = query.data.split(':')
     action, *params = data
 
-    # Сначала проверяем АДМИНСКИЕ действия
-    if action in ['users_list', 'user_detail', 'toggle_block', 'recent_searches',
-                 'recent_downloads', 'top_downloads', 'top_searches', 'back_to_stats',
-                 'refresh_stats']:
-        # Перенаправляем в админский обработчик
-        from admin import handle_admin_callback
-        await handle_admin_callback(update, context)
-        return
+    # Определяем контекст (личный чат или группа)
+    is_group = query.message.chat.type in ['group', 'supergroup']
+
+    if is_group:
+        # Для групп используем отдельную логику с привязкой к пользователю
+        await handle_group_callback(query, context, action, params, user)
+    else:
+        # Существующая логика для личных сообщений
+        await handle_private_callback(query, context, action, params)
+
+
+async def handle_private_callback(query, context, action, params):
+    # # Сначала проверяем АДМИНСКИЕ действия
+    # if action in ['users_list', 'user_detail', 'toggle_block', 'recent_searches',
+    #              'recent_downloads', 'top_downloads', 'top_searches', 'back_to_stats',
+    #              'refresh_stats']:
+    #     # Перенаправляем в админский обработчик
+    #     from admin import handle_admin_callback
+    #     await handle_admin_callback(update, context)
+    #     return
 
     # Затем проверяем ПОЛЬЗОВАТЕЛЬСКИЕ действия
     action_handlers = {
@@ -1133,3 +1145,183 @@ async def handle_reset_ratings(query, context, action, params):
 
     await query.edit_message_text(SETTING_TITLES[SETTING_RATING_FILTER], reply_markup=reply_markup)
     logger.log_user_action(query.from_user, "reset rating filter")
+
+
+# ===== РАБОТА В ГРУППЕ =====
+
+async def handle_group_message(update: Update, context: CallbackContext):
+    """Обрабатывает сообщения из группы"""
+    try:
+        chat = update.effective_chat
+        user = update.effective_user
+        message = update.effective_message
+
+        # Игнорируем сообщения без текста
+        if not message.text:
+            return
+
+        # Проверяем, обращается ли пользователь к боту
+        if not is_message_for_bot(message.text, context.bot.username):
+            return
+
+        # Извлекаем чистый запрос (убираем упоминание бота)
+        clean_query = extract_clean_query(message.text, context.bot.username)
+
+        # Обрабатываем поиск от имени пользователя
+        await handle_group_search(update, context, user, clean_query)
+
+    except Exception as e:
+        print(f"Ошибка при обработке сообщения из группы: {e}")
+
+
+def is_message_for_bot(message_text, bot_username):
+    """Проверяет, обращается ли пользователь к боту"""
+    if not bot_username:
+        return False
+
+    # Проверяем упоминание бота в начале сообщения
+    return (message_text.startswith(f'@{bot_username}')
+            # or message_text.startswith(f'/search@{bot_username}')
+        )
+
+
+def extract_clean_query(message_text, bot_username):
+    """Извлекает чистый поисковый запрос из сообщения"""
+    if not bot_username:
+        return message_text.strip()
+
+    # Убираем упоминание бота
+    clean_text = message_text.replace(f'@{bot_username}', '').strip()
+    #clean_text = clean_text.replace(f'/search@{bot_username}', '').strip()
+
+    return clean_text
+
+
+async def handle_group_search(update: Update, context: CallbackContext, user, query):
+    """Обрабатывает поисковые запросы из группы"""
+    try:
+        chat = update.effective_chat
+
+        if not query:
+            await update.message.reply_text(
+                "❌ Пожалуйста, укажите поисковый запрос после упоминания бота\n\n"
+                "Пример: @FlibustaRuBot война и мир",
+                reply_to_message_id=update.message.message_id
+            )
+            return
+
+        # Отправляем сообщение о начале поиска
+        processing_msg = await update.message.reply_text(
+            f"⏰ <i>Ищу книги для {user.first_name}...</i>",
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=update.message.message_id
+        )
+
+        # Получаем или создаем настройки пользователя
+        user_params = DB_SETTINGS.get_user_settings(user.id)
+        context.user_data[USER_PARAMS] = user_params
+
+        # Выполняем поиск книг
+        books, found_books_count = DB_BOOKS.search_books(
+            query, user_params.MaxBooks, user_params.Lang,
+            user_params.DateSortOrder, '', ''
+        )
+
+        await processing_msg.delete()
+
+        if books and found_books_count > 0:
+            pages_of_books = [books[i:i + user_params.MaxBooks] for i in range(0, len(books), user_params.MaxBooks)]
+            page = 0
+
+            keyboard = create_books_keyboard(page, pages_of_books)
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            if reply_markup:
+                header_found_text = f"📚 Результаты поиска для {user.first_name}:\n\n"
+                header_found_text += form_header_books(page, user_params.MaxBooks, found_books_count)
+
+                # Сохраняем контекст поиска с привязкой к пользователю
+                search_context_key = f"group_search_{user.id}_{chat.id}"
+                context.user_data[search_context_key] = {
+                    BOOKS: books,
+                    PAGES_OF_BOOKS: pages_of_books,
+                    FOUND_BOOKS_COUNT: found_books_count,
+                    'query': query,
+                    'user_id': user.id
+                }
+
+                await update.message.reply_text(
+                    header_found_text,
+                    reply_markup=reply_markup
+                )
+        else:
+            await update.message.reply_text(
+                f"😞 Не нашёл подходящих книг для запроса '{query}'",
+                reply_to_message_id=update.message.message_id
+            )
+
+        logger.log_user_action(user.id, "searched in group", f"{query}; count:{found_books_count}; chat:{chat.id}")
+
+    except Exception as e:
+        print(f"Ошибка при обработке поиска из группы: {e}")
+        await update.message.reply_text(
+            "❌ Произошла ошибка при поиске книг",
+            reply_to_message_id=update.message.message_id
+        )
+
+
+async def handle_group_callback(query, context, action, params, user):
+    """Обрабатывает callback-запросы из групп"""
+    chat_id = query.message.chat.id
+    search_context_key = f"group_search_{user.id}_{chat_id}"
+
+    # Восстанавливаем контекст поиска пользователя
+    search_context = context.user_data.get(search_context_key)
+
+    if not search_context:
+        await query.edit_message_text("❌ Сессия поиска истекла. Начните поиск заново.")
+        return
+
+    # Восстанавливаем данные поиска
+    context.user_data[BOOKS] = search_context[BOOKS]
+    context.user_data[PAGES_OF_BOOKS] = search_context[PAGES_OF_BOOKS]
+    context.user_data[FOUND_BOOKS_COUNT] = search_context[FOUND_BOOKS_COUNT]
+
+    # Получаем настройки пользователя
+    user_params = DB_SETTINGS.get_user_settings(user.id)
+    context.user_data[USER_PARAMS] = user_params
+
+    # Обрабатываем действия
+    if action == 'send_file':
+        await handle_send_file(query, context, action, params)
+    elif action.startswith('page_'):
+        await handle_group_page_change(query, context, action, params, user, search_context_key)
+    else:
+        await query.edit_message_text("❌ Это действие недоступно в группе")
+
+
+async def handle_group_page_change(query, context, action, params, user, search_context_key):
+    """Обрабатывает смену страницы в группе"""
+    page = int(action.removeprefix('page_'))
+    pages_of_books = context.user_data.get(PAGES_OF_BOOKS)
+
+    if not pages_of_books or page >= len(pages_of_books):
+        await query.edit_message_text("❌ Ошибка при загрузке страницы")
+        return
+
+    keyboard = create_books_keyboard(page, pages_of_books)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if reply_markup:
+        found_books_count = context.user_data.get(FOUND_BOOKS_COUNT)
+        user_params = context.user_data.get(USER_PARAMS)
+
+        header_text = f"📚 Результаты поиска для {user.first_name}:\n\n"
+        header_text += form_header_books(page, user_params.MaxBooks, found_books_count)
+
+        await query.edit_message_text(header_text, reply_markup=reply_markup)
+
+        # Обновляем контекст поиска
+        search_context = context.user_data.get(search_context_key, {})
+        search_context[PAGES_OF_BOOKS] = pages_of_books
+        context.user_data[search_context_key] = search_context
