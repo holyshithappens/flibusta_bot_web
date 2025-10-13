@@ -6,6 +6,7 @@
 /data/
 /backups/
 /logs/
+/tools/
 
 # Виртуальное окружение
 .venv/
