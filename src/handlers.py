@@ -6,7 +6,7 @@ from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import TimedOut, BadRequest, Forbidden
-from telegram.ext import CallbackContext, ConversationHandler
+from telegram.ext import CallbackContext #, ConversationHandler
 
 from database import DatabaseBooks, DatabaseSettings
 from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, BOT_NEWS, \

@@ -6,7 +6,7 @@ services:
     #build: .
     container_name: web-flibusta-bot
     restart: unless-stopped
-    env_file: .env.example
+    env_file: .env
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - TZ=Europe/Moscow
@@ -19,12 +19,12 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     user: "1000:1000"  # UID:GID текущего пользователя
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=2)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+#    healthcheck:
+#      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=2)"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+#      start_period: 40s
     logging:
       driver: "json-file"
       options:
