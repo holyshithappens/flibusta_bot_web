@@ -2,13 +2,12 @@ import os
 import re
 import xml.etree.ElementTree as ET
 import base64
-from urllib.parse import unquote, urljoin, quote
-import urllib.parse
+from urllib.parse import unquote #, urljoin, quote
 import aiohttp
 import chardet
-from bs4 import BeautifulSoup
+#from bs4 import BeautifulSoup
 
-from constants import FLIBUSTA_BASE_URL, CRITERIA_PATTERN, CRITERIA_PATTERN_SERIES_QUOTED
+from constants import CRITERIA_PATTERN, CRITERIA_PATTERN_SERIES_QUOTED #FLIBUSTA_BASE_URL
 
 #from html import unescape
 #from constants import FLIBUSTA_BASE_URL
@@ -321,7 +320,7 @@ def remove_punctuation(text):
     else:
         return re.sub(r'[^\w\s]', ' ', text)
 
-def get_reader_links_for_platform(platform: str) -> str:
+def _get_reader_links_for_platform(platform: str) -> str:
     """
     Возвращает HTML с ссылками на читалки для конкретной платформы
     """
@@ -423,49 +422,49 @@ async def upload_to_tmpfiles(file, file_name: str) -> str:
         return None
 
 
-async def get_cover_url(book_id: str):
-    """Простой поиск обложки через BeautifulSoup"""
-    try:
-        url = f"{FLIBUSTA_BASE_URL}/b/{book_id}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    cover_img = soup.find('img', title='Cover image')
-                    if cover_img and cover_img.get('src'):
-                        return urljoin(FLIBUSTA_BASE_URL, cover_img['src'])
-        return None
-    except Exception as e:
-        print(f"Ошибка получения обложки: {e}")
-        return None
-
-
-async def download_cover(cover_url: str):
-    """Скачивает обложку по URL"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(cover_url) as response:
-                if response.status == 200:
-                    return await response.read()
-        return None
-    except Exception as e:
-        print(f"Ошибка скачивания обложки: {e}")
-        return None
-
-
-async def download_book_from_flibusta(book_id: str, book_format: str):
-    """Скачивает книгу с Flibusta.is"""
-    try:
-        url = f"{FLIBUSTA_BASE_URL}/b/{book_id}/{book_format}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    return await response.read()
-        return None
-    except Exception as e:
-        print(f"Ошибка скачивания книги: {e}")
-        return None
+# async def get_cover_url(book_id: str):
+#     """Простой поиск обложки через BeautifulSoup"""
+#     try:
+#         url = f"{FLIBUSTA_BASE_URL}/b/{book_id}"
+#         async with aiohttp.ClientSession() as session:
+#             async with session.get(url) as response:
+#                 if response.status == 200:
+#                     html = await response.text()
+#                     soup = BeautifulSoup(html, 'html.parser')
+#                     cover_img = soup.find('img', title='Cover image')
+#                     if cover_img and cover_img.get('src'):
+#                         return urljoin(FLIBUSTA_BASE_URL, cover_img['src'])
+#         return None
+#     except Exception as e:
+#         print(f"Ошибка получения обложки: {e}")
+#         return None
+#
+#
+# async def download_cover(cover_url: str):
+#     """Скачивает обложку по URL"""
+#     try:
+#         async with aiohttp.ClientSession() as session:
+#             async with session.get(cover_url) as response:
+#                 if response.status == 200:
+#                     return await response.read()
+#         return None
+#     except Exception as e:
+#         print(f"Ошибка скачивания обложки: {e}")
+#         return None
+#
+#
+# async def download_book_from_flibusta(book_id: str, book_format: str):
+#     """Скачивает книгу с Flibusta.is"""
+#     try:
+#         url = f"{FLIBUSTA_BASE_URL}/b/{book_id}/{book_format}"
+#         async with aiohttp.ClientSession() as session:
+#             async with session.get(url) as response:
+#                 if response.status == 200:
+#                     return await response.read()
+#         return None
+#     except Exception as e:
+#         print(f"Ошибка скачивания книги: {e}")
+#         return None
 
 
 # # ===== DEEP LINK SEARCH =====
