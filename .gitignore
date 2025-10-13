@@ -22,13 +22,13 @@ __pycache__/
 pip-log.txt
 
 # Docker
-docker-compose.yml
+#docker-compose.yml
 
 # Системные файлы
 .DS_Store
 Thumbs.db
 
-deploy.sh
+*local*
 db_backup.sh
 db_restore.sh
 Makefile
