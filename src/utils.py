@@ -7,7 +7,7 @@ import aiohttp
 import chardet
 #from bs4 import BeautifulSoup
 
-from constants import CRITERIA_PATTERN, CRITERIA_PATTERN_SERIES_QUOTED #FLIBUSTA_BASE_URL
+from constants import CRITERIA_PATTERN, CRITERIA_PATTERN_SERIES_QUOTED, FLIBUSTA_DB_BOOKS_PATH  # FLIBUSTA_BASE_URL
 
 #from html import unescape
 #from constants import FLIBUSTA_BASE_URL
@@ -21,6 +21,20 @@ NAMESPACES = {
     "fb": FB2_NAMESPACE,
     "xlink": XLINK_NAMESPACE,
 }
+
+
+def check_files():
+    # Проверяем доступность файлов и БД
+    required_paths = [
+        FLIBUSTA_DB_BOOKS_PATH
+#        FLIBUSTA_DB_SETTINGS_PATH
+    ]
+    for path in required_paths:
+        if not os.path.exists(path):
+            print(f"Ошибка: путь {path} недоступен в контейнере.")
+            return False
+    return True
+
 
 # Имя бота из переменной окружения
 BOT_USERNAME = os.getenv("BOT_USERNAME", "")
@@ -420,6 +434,30 @@ async def upload_to_tmpfiles(file, file_name: str) -> str:
     except Exception as e:
         print(f"Ошибка загрузки: {e}")
         return None
+
+# ===== ВСПОМОГАТЕЛЬНЫЕ ОБРАБОТЧИКИ ДЛЯ ГРУППОВОГО ЧАТА =====
+
+def is_message_for_bot(message_text, bot_username):
+    """Проверяет, обращается ли пользователь к боту"""
+    if not bot_username:
+        return False
+
+    # Проверяем упоминание бота в начале сообщения
+    return (message_text.startswith(f'@{bot_username}')
+            # or message_text.startswith(f'/search@{bot_username}')
+        )
+
+
+def extract_clean_query(message_text, bot_username):
+    """Извлекает чистый поисковый запрос из сообщения"""
+    if not bot_username:
+        return message_text.strip()
+
+    # Убираем упоминание бота
+    clean_text = message_text.replace(f'@{bot_username}', '').strip()
+    #clean_text = clean_text.replace(f'/search@{bot_username}', '').strip()
+
+    return clean_text
 
 
 # async def get_cover_url(book_id: str):
