@@ -45,7 +45,7 @@ def cleanup_memory():
 async def log_stats(context: CallbackContext):
     """Только логирование статистики"""
     stats = log_system_stats()
-    print(f"📊 Stats: {stats['memory_used']:.1f}MB memory")
+    print(f"Stats: {stats['memory_used']:.1f}MB memory")
 
 
 # async def perform_cleanup(context: CallbackContext):
@@ -58,6 +58,8 @@ async def log_stats(context: CallbackContext):
 
 async def cleanup_old_sessions(context: CallbackContext):
     """Очистка данных поиска у неактивных пользователей"""
+    await log_stats(context)
+
     try:
         app = context.application
         cleaned_count_private = 0
@@ -113,3 +115,5 @@ async def cleanup_old_sessions(context: CallbackContext):
 
     except Exception as e:
         print(f"❌ Cleanup error: {e}")
+
+    await log_stats(context)

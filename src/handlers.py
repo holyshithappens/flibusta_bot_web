@@ -12,6 +12,7 @@ from database import DatabaseBooks, DatabaseSettings
 from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, BOT_NEWS, \
     SETTING_MAX_BOOKS, SETTING_LANG_SEARCH, SETTING_SORT_ORDER, SETTING_SIZE_LIMIT, \
     SETTING_BOOK_FORMAT, SETTING_SEARCH_TYPE, SETTING_OPTIONS, SETTING_TITLES, SETTING_RATING_FILTER, BOOK_RATINGS
+from health import log_stats
 from utils import format_size, extract_cover_from_fb2, extract_metadata_from_fb2, format_metadata_message, \
     get_platform_recommendations, download_book_with_filename, upload_to_tmpfiles, is_message_for_bot, \
     extract_clean_query
@@ -273,6 +274,8 @@ async def start_cmd(update: Update, context: CallbackContext):
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
 
+    await log_stats(context)
+
     logger.log_user_action(user, "started bot")
 
 
@@ -294,6 +297,9 @@ async def genres_cmd(update: Update, context: CallbackContext):
 
     user = update.message.from_user
     # update_user_activity(context, user.id)
+
+    await log_stats(context)
+
     logger.log_user_action(user, "viewed parent genres")
 
 
@@ -309,6 +315,9 @@ async def langs_cmd(update: Update, context: CallbackContext):
 
     user = update.message.from_user
     # update_user_activity(context, user.id)
+
+    await log_stats(context)
+
     logger.log_user_action(user, "viewed langs of books")
 
 
@@ -402,6 +411,9 @@ async def handle_message(update: Update, context: CallbackContext):
     except Exception as e:
         print(f"Error in handle_message: {e}")
         await update.message.reply_text("❌ Произошла ошибка при обработке запроса")
+
+    await log_stats(context)
+
 
 async def handle_search_books(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг)"""
@@ -632,6 +644,8 @@ async def button_callback(update: Update, context: CallbackContext):
         # Существующая логика для личных сообщений
         await handle_private_callback(query, context, action, params)
 
+    await log_stats(context)
+
 
 async def handle_private_callback(query, context, action, params):
     # # Сначала проверяем АДМИНСКИЕ действия
@@ -718,11 +732,15 @@ async def handle_show_genres(query, context, action, params):
            await query.message.reply_text(genres_html, parse_mode=ParseMode.HTML)
        else:
            await query.message.reply_text("❌ Жанры не найдены для этой категории", parse_mode=ParseMode.HTML)
+
+       logger.log_user_action(query.from_user, "show genre", parent_genre)
+
     except Exception as e:
         print(f"Error in handle_show_genres: {e}")
         await query.message.reply_text("❌ Ошибка при загрузке жанров")
 
-    logger.log_user_action(query.from_user, "show genre", parent_genre)
+    await log_stats(context)
+
 
 
 # ===== ОБНОВЛЕННЫЕ ОБРАБОТЧИКИ НАСТРОЕК =====
@@ -1055,9 +1073,6 @@ async def about_cmd(update: Update, context: CallbackContext):
             disable_web_page_preview=True
         )
 
-        user = update.message.from_user
-        # update_user_activity(context, user.id)
-        logger.log_user_action(user, "viewed about")
 
     except Exception as e:
         print(f"Error in about command: {e}")
@@ -1065,6 +1080,12 @@ async def about_cmd(update: Update, context: CallbackContext):
             "❌ Не удалось получить информацию о библиотеке",
             parse_mode=ParseMode.HTML
         )
+
+    await log_stats(context)
+
+    user = update.message.from_user
+    # update_user_activity(context, user.id)
+    logger.log_user_action(user, "viewed about")
 
 
 async def news_cmd(update: Update, context: CallbackContext):
@@ -1233,6 +1254,8 @@ async def handle_group_message(update: Update, context: CallbackContext):
             reply_to_message_id=update.message.message_id
         )
 
+    await log_stats(context)
+
 
 async def handle_group_search(update: Update, context: CallbackContext, user, query):
     """Обрабатывает поисковые запросы из группы"""
@@ -1335,6 +1358,8 @@ async def handle_group_callback(query, context, action, params, user):
         await handle_group_page_change(query, context, action, params, user, search_context_key)
     else:
         await query.edit_message_text("❌ Это действие недоступно в группе")
+
+    await log_stats(context)
 
 
 async def handle_group_page_change(query, context, action, params, user, search_context_key):

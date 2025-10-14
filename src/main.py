@@ -11,7 +11,7 @@ from telegram.error import Forbidden, BadRequest, TimedOut
 from handlers import handle_message, button_callback, start_cmd, genres_cmd, langs_cmd, settings_cmd, donate_cmd, \
     help_cmd, about_cmd, news_cmd, handle_group_message
 from admin import admin_cmd, cancel_auth, auth_password, AUTH_PASSWORD, handle_admin_buttons, ADMIN_BUTTONS
-from constants import FLIBUSTA_DB_BOOKS_PATH, MONITORING_INTERVAL, CLEANUP_INTERVAL  # , FLIBUSTA_DB_SETTINGS_PATH
+from constants import CLEANUP_INTERVAL #, MONITORING_INTERVAL  # FLIBUSTA_DB_BOOKS_PATH, FLIBUSTA_DB_SETTINGS_PATH
 from health import log_stats, cleanup_old_sessions
 from utils import check_files
 
@@ -128,8 +128,8 @@ def main():
     # Добавляем периодические задачи
     job_queue = application.job_queue
     if job_queue:
-        # Периодический мониторинг
-        job_queue.run_repeating(log_stats, interval=MONITORING_INTERVAL, first=10)
+        # # Периодический мониторинг
+        # job_queue.run_repeating(log_stats, interval=MONITORING_INTERVAL, first=10)
         # Периодическая очистка старых пользовательских сессий
         job_queue.run_repeating(cleanup_old_sessions, interval=CLEANUP_INTERVAL, first=CLEANUP_INTERVAL)
 
