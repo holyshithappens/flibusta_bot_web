@@ -112,8 +112,8 @@ async def cleanup_old_sessions(context: CallbackContext):
 
         if cleaned_count_private > 0 or cleaned_count_group > 0:
             cleanup_memory()
+            await log_stats(context)
 
     except Exception as e:
         print(f"❌ Cleanup error: {e}")
 
-    await log_stats(context)
