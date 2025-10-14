@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import zipfile
 from io import BytesIO
@@ -5,7 +6,7 @@ from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import TimedOut, BadRequest, Forbidden
-from telegram.ext import CallbackContext, ConversationHandler
+from telegram.ext import CallbackContext #, ConversationHandler
 
 from database import DatabaseBooks, DatabaseSettings
 from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, BOT_NEWS, \
@@ -235,11 +236,17 @@ async def handle_timeout_error(processing_msg, book_data, file_name, file_ext, q
         logger.log_user_action(query.from_user.id, "error sending book cloud", f"{file_name}{file_ext}")
 
 
+def update_user_activity(context: CallbackContext, user_id: int=0):
+    """Обновляет время последней активности пользователя в user_data"""
+    if hasattr(context, 'user_data'):
+        context.user_data['last_activity'] = datetime.now()
+
 # ===== ОСНОВНЫЕ ОБРАБОТЧИКИ КОМАНД =====
 
 async def start_cmd(update: Update, context: CallbackContext):
     """Обработка команды /start с deep linking"""
     user = update.effective_user
+    update_user_activity(context, user.id)
 
     # Сохраняем настройки пользователя
     user_params = DB_SETTINGS.get_user_settings(user.id)
@@ -284,6 +291,7 @@ async def genres_cmd(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Ошибка при загрузке жанров")
 
     user = update.message.from_user
+    update_user_activity(context, user.id)
     logger.log_user_action(user, "viewed parent genres")
 
 
@@ -298,6 +306,7 @@ async def langs_cmd(update: Update, context: CallbackContext):
     )
 
     user = update.message.from_user
+    update_user_activity(context, user.id)
     logger.log_user_action(user, "viewed langs of books")
 
 
@@ -328,6 +337,7 @@ async def show_settings_menu(update_or_query, context, from_callback=False):
         await update_or_query.message.reply_text("Настроить:", reply_markup=reply_markup)
         user = update_or_query.message.from_user
 
+    update_user_activity(context, user.id)
     logger.log_user_action(user, "showed settings menu")
 
 
@@ -372,7 +382,8 @@ async def settings_cmd(update: Update, context: CallbackContext):
 async def handle_message(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг или серий)"""
     try:
-        #user = update.effective_user
+        user = update.effective_user
+        update_user_activity(context, user.id)
 
         search_type = context.user_data.get(SETTING_SEARCH_TYPE, 'books')
 
@@ -591,6 +602,7 @@ async def button_callback(update: Update, context: CallbackContext):
     """УНИВЕРСАЛЬНЫЙ обработчик callback-запросов"""
     query = update.callback_query
     user = query.from_user
+    update_user_activity(context, user.id)
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
 
@@ -784,41 +796,74 @@ async def handle_set_search_type(query, context, action, params):
 
 
 async def handle_page_change(query, context, action, params):
-    """Обрабатывает смену страницы"""
-    page = int(action.removeprefix('page_'))
-    pages_of_books = context.user_data.get(PAGES_OF_BOOKS)
-    # Определяем контекст поиска
-    search_context = context.user_data.get(SEARCH_CONTEXT, SEARCH_TYPE_BOOKS)
-    keyboard = create_books_keyboard(page, pages_of_books, search_context)
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    """Обрабатывает смену страницы с проверкой данных"""
+    try:
+        # Проверяем, что данные поиска еще существуют
+        if 'PAGES_OF_BOOKS' not in context.user_data or not context.user_data['PAGES_OF_BOOKS']:
+            await query.answer("❌ Результаты поиска устарели. Выполните новый поиск.")
+            await query.edit_message_text(
+                "🕒 <b>Результаты поиска устарели</b>\n\n"
+                "Пожалуйста, выполните новый поиск.",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
-    if reply_markup:
-        found_books_count = context.user_data.get(FOUND_BOOKS_COUNT)
-        user_params = context.user_data.get(USER_PARAMS)
-        # Формируем заголовок в зависимости от контекста
-        series_name = None
-        if search_context == SEARCH_TYPE_SERIES:
-            series_name = context.user_data.get('current_series_name', None)
-        header_text = form_header_books(page, user_params.MaxBooks, found_books_count, 'книг', series_name)
-        await query.edit_message_text(header_text, reply_markup=reply_markup)
+        page = int(action.removeprefix('page_'))
+        pages_of_books = context.user_data.get(PAGES_OF_BOOKS)
+        # Определяем контекст поиска
+        search_context = context.user_data.get(SEARCH_CONTEXT, SEARCH_TYPE_BOOKS)
+        keyboard = create_books_keyboard(page, pages_of_books, search_context)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        if reply_markup:
+            found_books_count = context.user_data.get(FOUND_BOOKS_COUNT)
+            user_params = context.user_data.get(USER_PARAMS)
+            # Формируем заголовок в зависимости от контекста
+            series_name = None
+            if search_context == SEARCH_TYPE_SERIES:
+                series_name = context.user_data.get('current_series_name', None)
+            header_text = form_header_books(page, user_params.MaxBooks, found_books_count, 'книг', series_name)
+            await query.edit_message_text(header_text, reply_markup=reply_markup)
+
+    except ValueError:
+        await query.answer("❌ Ошибка в номере страницы")
+    except Exception as e:
+        print(f"Error in page change: {e}")
+        await query.answer("❌ Произошла ошибка при смене страницы")
 
     logger.log_user_action(query.from_user, "changed page of books", page)
 
 
 async def handle_series_page_change(query, context, action, params):
-    """Обрабатывает смену страницы"""
-    page = int(action.removeprefix('series_page_'))
-    pages_of_series = context.user_data.get(PAGES_OF_SERIES)
-    keyboard = create_series_keyboard(page, pages_of_series)
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    try:
+        # Проверяем, что данные серий еще существуют
+        if 'PAGES_OF_SERIES' not in context.user_data or not context.user_data['PAGES_OF_SERIES']:
+            await query.answer("❌ Результаты поиска устарели. Выполните новый поиск.")
+            await query.edit_message_text(
+                "🕒 <b>Результаты поиска устарели</b>\n\n"
+                "Пожалуйста, выполните новый поиск.",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
-    if reply_markup:
-        found_series_count = context.user_data.get(FOUND_SERIES_COUNT)
-        user_params = context.user_data.get(USER_PARAMS)
-        header_found_text = form_header_books(page, user_params.MaxBooks, found_series_count)
-        await query.edit_message_text(header_found_text, reply_markup=reply_markup)
+        page = int(action.removeprefix('series_page_'))
+        pages_of_series = context.user_data.get(PAGES_OF_SERIES)
+        keyboard = create_series_keyboard(page, pages_of_series)
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-    context.user_data['last_series_page'] = page  # Сохраняем текущую страницу
+        if reply_markup:
+            found_series_count = context.user_data.get(FOUND_SERIES_COUNT)
+            user_params = context.user_data.get(USER_PARAMS)
+            header_found_text = form_header_books(page, user_params.MaxBooks, found_series_count)
+            await query.edit_message_text(header_found_text, reply_markup=reply_markup)
+
+        context.user_data['last_series_page'] = page  # Сохраняем текущую страницу
+
+    except ValueError:
+        await query.answer("❌ Ошибка в номере страницы")
+    except Exception as e:
+        print(f"Error in series page change: {e}")
+        await query.answer("❌ Произошла ошибка при смене страницы")
 
     logger.log_user_action(query.from_user, "changed page of series", page)
 
@@ -916,6 +961,7 @@ async def donate_cmd(update: Update, context: CallbackContext):
     )
 
     user = update.message.from_user
+    update_user_activity(context, user.id)
     logger.log_user_action(user, "viewed donate page")
 
 
@@ -954,7 +1000,9 @@ async def help_cmd(update: Update, context: CallbackContext):
     🚦 <code>=слово</code> - точное соответствие критерию, например, <code>название: =монах</code>
     """
     await update.message.reply_text(help_text, parse_mode='HTML')
-    logger.log_user_action(update.message.from_user, "showed help")
+    user = update.message.from_user
+    update_user_activity(context, user.id)
+    logger.log_user_action(user, "showed help")
 
 
 async def about_cmd(update: Update, context: CallbackContext):
@@ -1007,7 +1055,9 @@ async def about_cmd(update: Update, context: CallbackContext):
             disable_web_page_preview=True
         )
 
-        logger.log_user_action(update.message.from_user, "viewed about")
+        user = update.message.from_user
+        update_user_activity(context, user.id)
+        logger.log_user_action(user, "viewed about")
 
     except Exception as e:
         print(f"Error in about command: {e}")
@@ -1049,6 +1099,7 @@ async def news_cmd(update: Update, context: CallbackContext):
 
         # Логируем действие
         user = update.message.from_user
+        update_user_activity(context, user.id)
         logger.log_user_action(user, "viewed news")
 
     except Exception as e:
