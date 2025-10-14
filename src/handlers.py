@@ -1327,7 +1327,7 @@ async def handle_group_search(update: Update, context: CallbackContext, user, qu
                 reply_to_message_id=update.message.message_id
             )
 
-        logger.log_user_action(user, "searched in group", f"{query}; count:{found_books_count}; chat:{chat.id}")
+        logger.log_user_action(user, "searched in group", f"{query}; count:{found_books_count}; chat:{chat.title}")
 
     except Exception as e:
         print(f"Ошибка при обработке поиска из группы: {e}")

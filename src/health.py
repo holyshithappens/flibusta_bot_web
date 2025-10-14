@@ -1,12 +1,11 @@
 import psutil
 import gc
-import logging
 from datetime import datetime
 
 from telegram.ext import CallbackContext
 
 from constants import CLEANUP_INTERVAL
-
+from logger import logger
 
 def get_memory_usage():
     """Возвращает использование памяти в MB"""
@@ -29,7 +28,7 @@ def get_system_stats():
 def log_system_stats():
     """Логирует системную статистику"""
     stats = get_system_stats()
-    logging.info(f"SYSTEM_STATS: {stats}")
+    logger.log_system_action("System stats", str(stats))
     return stats
 
 
@@ -38,14 +37,14 @@ def cleanup_memory():
     before = get_memory_usage()
     gc.collect()
     after = get_memory_usage()
-    logging.info(f"Memory cleanup: {before:.1f}MB -> {after:.1f}MB")
+    # logger.log_system_action("Memory cleanup", f"{before:.1f}MB -> {after:.1f}MB")
 
 # ===== ОБРАБОТЧИКИ ТРИГГЕРОВ В job_queue =====
 
 async def log_stats(context: CallbackContext):
     """Только логирование статистики"""
     stats = log_system_stats()
-    print(f"Stats: {stats['memory_used']:.1f}MB memory")
+    # print(f"Memory used: {stats['memory_used']:.1f}MB")
 
 
 # async def perform_cleanup(context: CallbackContext):
