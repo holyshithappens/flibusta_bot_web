@@ -11,54 +11,9 @@ from telegram.error import Forbidden, BadRequest, TimedOut
 from handlers import handle_message, button_callback, start_cmd, genres_cmd, langs_cmd, settings_cmd, donate_cmd, \
     help_cmd, about_cmd, news_cmd, handle_group_message
 from admin import admin_cmd, cancel_auth, auth_password, AUTH_PASSWORD, handle_admin_buttons, ADMIN_BUTTONS
-from constants import FLIBUSTA_DB_BOOKS_PATH   # , FLIBUSTA_DB_SETTINGS_PATH
-from health import log_system_stats
-
-MONITORING_INTERVAL=1800
-CLEANUP_INTERVAL=3600
-
-async def log_stats(context: CallbackContext):
-    """Только логирование статистики"""
-    stats = log_system_stats()
-    print(f"📊 Stats: {stats['memory_used']:.1f}MB memory")
-
-# async def perform_cleanup(context: CallbackContext):
-#     """Периодическая очистка и мониторинг"""
-#     try:
-#         cleanup_memory()
-#     except Exception as e:
-#         print(f"Error in periodic cleanup: {e}")
-
-async def cleanup_old_sessions(context: CallbackContext):
-    """Очистка данных поиска у неактивных пользователей"""
-    try:
-        if hasattr(context, 'application') and hasattr(context.application, 'user_data'):
-            app = context.application
-            cleaned_count = 0
-
-            for user_id, user_data in app.user_data.items():
-                if isinstance(user_data, dict):
-                    last_activity = user_data.get('last_activity')
-
-                    # Очищаем если неактивен более 1 часа
-                    if isinstance(last_activity, datetime) and (datetime.now() - last_activity).total_seconds() > CLEANUP_INTERVAL:
-                        # Очищаем данные поиска УДАЛЕНИЕМ ключей
-                        search_keys = [
-                            'BOOKS', 'PAGES_OF_BOOKS', 'FOUND_BOOKS_COUNT',
-                            'SERIES', 'PAGES_OF_SERIES', 'FOUND_SERIES_COUNT'
-                        ]
-
-                        for key in search_keys:
-                            if key in user_data:
-                                del user_data[key]
-
-                        cleaned_count += 1
-
-            if cleaned_count > 0:
-                print(f"🧹 Cleaned datasets of {cleaned_count} user(s)")
-
-    except Exception as e:
-        print(f"❌ Cleanup error: {e}")
+from constants import CLEANUP_INTERVAL #, MONITORING_INTERVAL  # FLIBUSTA_DB_BOOKS_PATH, FLIBUSTA_DB_SETTINGS_PATH
+from health import log_stats, cleanup_old_sessions
+from utils import check_files
 
 
 async def error_handler(update: Update, context: CallbackContext):
@@ -84,19 +39,6 @@ async def error_handler(update: Update, context: CallbackContext):
     print(f"Необработанная ошибка: {error}")
     if update and update.effective_user:
         print(f"User: {update.effective_user.id}")
-
-
-def check_files():
-    # Проверяем доступность файлов и БД
-    required_paths = [
-        FLIBUSTA_DB_BOOKS_PATH
-#        FLIBUSTA_DB_SETTINGS_PATH
-    ]
-    for path in required_paths:
-        if not os.path.exists(path):
-            print(f"Ошибка: путь {path} недоступен в контейнере.")
-            return False
-    return True
 
 
 async def set_commands(application: Application):
@@ -186,12 +128,13 @@ def main():
     # Добавляем периодические задачи
     job_queue = application.job_queue
     if job_queue:
-        # Периодический мониторинг
-        job_queue.run_repeating(log_stats, interval=MONITORING_INTERVAL, first=10)
+        # # Периодический мониторинг
+        # job_queue.run_repeating(log_stats, interval=MONITORING_INTERVAL, first=10)
         # Периодическая очистка старых пользовательских сессий
         job_queue.run_repeating(cleanup_old_sessions, interval=CLEANUP_INTERVAL, first=CLEANUP_INTERVAL)
 
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()

@@ -12,8 +12,10 @@ from database import DatabaseBooks, DatabaseSettings
 from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, BOT_NEWS, \
     SETTING_MAX_BOOKS, SETTING_LANG_SEARCH, SETTING_SORT_ORDER, SETTING_SIZE_LIMIT, \
     SETTING_BOOK_FORMAT, SETTING_SEARCH_TYPE, SETTING_OPTIONS, SETTING_TITLES, SETTING_RATING_FILTER, BOOK_RATINGS
+from health import log_stats
 from utils import format_size, extract_cover_from_fb2, extract_metadata_from_fb2, format_metadata_message, \
-    get_platform_recommendations, download_book_with_filename, upload_to_tmpfiles
+    get_platform_recommendations, download_book_with_filename, upload_to_tmpfiles, is_message_for_bot, \
+    extract_clean_query
 from logger import logger
 
 
@@ -236,17 +238,18 @@ async def handle_timeout_error(processing_msg, book_data, file_name, file_ext, q
         logger.log_user_action(query.from_user.id, "error sending book cloud", f"{file_name}{file_ext}")
 
 
-def update_user_activity(context: CallbackContext, user_id: int=0):
-    """Обновляет время последней активности пользователя в user_data"""
-    if hasattr(context, 'user_data'):
-        context.user_data['last_activity'] = datetime.now()
+# def update_user_activity(context: CallbackContext, user_id: int=0):
+#     """Обновляет время последней активности пользователя в user_data"""
+#     if hasattr(context, 'user_data'):
+#         context.user_data['last_activity'] = datetime.now()
+
 
 # ===== ОСНОВНЫЕ ОБРАБОТЧИКИ КОМАНД =====
 
 async def start_cmd(update: Update, context: CallbackContext):
     """Обработка команды /start с deep linking"""
     user = update.effective_user
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
 
     # Сохраняем настройки пользователя
     user_params = DB_SETTINGS.get_user_settings(user.id)
@@ -267,9 +270,11 @@ async def start_cmd(update: Update, context: CallbackContext):
     """
     await update.message.reply_text(welcome_text, parse_mode='HTML')
 
-    user = update.message.from_user
+    # user = update.message.from_user
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
+
+    await log_stats(context)
 
     logger.log_user_action(user, "started bot")
 
@@ -291,7 +296,10 @@ async def genres_cmd(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Ошибка при загрузке жанров")
 
     user = update.message.from_user
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
+
+    await log_stats(context)
+
     logger.log_user_action(user, "viewed parent genres")
 
 
@@ -306,7 +314,10 @@ async def langs_cmd(update: Update, context: CallbackContext):
     )
 
     user = update.message.from_user
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
+
+    await log_stats(context)
+
     logger.log_user_action(user, "viewed langs of books")
 
 
@@ -337,7 +348,7 @@ async def show_settings_menu(update_or_query, context, from_callback=False):
         await update_or_query.message.reply_text("Настроить:", reply_markup=reply_markup)
         user = update_or_query.message.from_user
 
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
     logger.log_user_action(user, "showed settings menu")
 
 
@@ -382,8 +393,8 @@ async def settings_cmd(update: Update, context: CallbackContext):
 async def handle_message(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг или серий)"""
     try:
-        user = update.effective_user
-        update_user_activity(context, user.id)
+        # user = update.effective_user
+        # update_user_activity(context, user.id)
 
         search_type = context.user_data.get(SETTING_SEARCH_TYPE, 'books')
 
@@ -400,6 +411,9 @@ async def handle_message(update: Update, context: CallbackContext):
     except Exception as e:
         print(f"Error in handle_message: {e}")
         await update.message.reply_text("❌ Произошла ошибка при обработке запроса")
+
+    await log_stats(context)
+
 
 async def handle_search_books(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг)"""
@@ -439,6 +453,7 @@ async def handle_search_books(update: Update, context: CallbackContext):
         context.user_data[BOOKS] = books
         context.user_data[PAGES_OF_BOOKS] = pages_of_books
         context.user_data[FOUND_BOOKS_COUNT] = found_books_count
+        context.user_data['last_activity'] = datetime.now()  # Сохраняем время поиска
     else:
         await update.message.reply_text("😞 Не нашёл подходящих книг. Попробуйте другие критерии поиска")
 
@@ -485,6 +500,7 @@ async def handle_search_series(update: Update, context: CallbackContext):
         context.user_data[FOUND_SERIES_COUNT] = found_series_count
         context.user_data['series_search_query'] = query_text  # Сохраняем поисковый запрос
         context.user_data['last_series_page'] = page  # Сохраняем текущую страницу
+        context.user_data['last_activity'] = datetime.now()  # Сохраняем время поиска
     else:
         await update.message.reply_text("😞 Не нашёл подходящих книжных серий. Попробуйте другие критерии поиска")
 
@@ -528,6 +544,7 @@ async def handle_search_series_books(query, context, action, params):
             context.user_data[BOOKS] = books
             context.user_data[PAGES_OF_BOOKS] = pages_of_books
             context.user_data[FOUND_BOOKS_COUNT] = found_books_count
+            context.user_data['last_activity'] = datetime.now()  # Сохраняем время поиска
 
             page = 0
             keyboard = create_books_keyboard(page, pages_of_books, SEARCH_TYPE_SERIES)
@@ -602,7 +619,7 @@ async def button_callback(update: Update, context: CallbackContext):
     """УНИВЕРСАЛЬНЫЙ обработчик callback-запросов"""
     query = update.callback_query
     user = query.from_user
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
     user_params = DB_SETTINGS.get_user_settings(user.id)
     context.user_data[USER_PARAMS] = user_params
 
@@ -626,6 +643,8 @@ async def button_callback(update: Update, context: CallbackContext):
     else:
         # Существующая логика для личных сообщений
         await handle_private_callback(query, context, action, params)
+
+    await log_stats(context)
 
 
 async def handle_private_callback(query, context, action, params):
@@ -713,11 +732,15 @@ async def handle_show_genres(query, context, action, params):
            await query.message.reply_text(genres_html, parse_mode=ParseMode.HTML)
        else:
            await query.message.reply_text("❌ Жанры не найдены для этой категории", parse_mode=ParseMode.HTML)
+
+       logger.log_user_action(query.from_user, "show genre", parent_genre)
+
     except Exception as e:
         print(f"Error in handle_show_genres: {e}")
         await query.message.reply_text("❌ Ошибка при загрузке жанров")
 
-    logger.log_user_action(query.from_user, "show genre", parent_genre)
+    await log_stats(context)
+
 
 
 # ===== ОБНОВЛЕННЫЕ ОБРАБОТЧИКИ НАСТРОЕК =====
@@ -800,12 +823,7 @@ async def handle_page_change(query, context, action, params):
     try:
         # Проверяем, что данные поиска еще существуют
         if 'PAGES_OF_BOOKS' not in context.user_data or not context.user_data['PAGES_OF_BOOKS']:
-            await query.answer("❌ Результаты поиска устарели. Выполните новый поиск.")
-            await query.edit_message_text(
-                "🕒 <b>Результаты поиска устарели</b>\n\n"
-                "Пожалуйста, выполните новый поиск.",
-                parse_mode=ParseMode.HTML
-            )
+            await query.edit_message_text("❌ Сессия поиска истекла. Начните поиск заново.")
             return
 
         page = int(action.removeprefix('page_'))
@@ -961,7 +979,7 @@ async def donate_cmd(update: Update, context: CallbackContext):
     )
 
     user = update.message.from_user
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
     logger.log_user_action(user, "viewed donate page")
 
 
@@ -1001,7 +1019,7 @@ async def help_cmd(update: Update, context: CallbackContext):
     """
     await update.message.reply_text(help_text, parse_mode='HTML')
     user = update.message.from_user
-    update_user_activity(context, user.id)
+    # update_user_activity(context, user.id)
     logger.log_user_action(user, "showed help")
 
 
@@ -1055,9 +1073,6 @@ async def about_cmd(update: Update, context: CallbackContext):
             disable_web_page_preview=True
         )
 
-        user = update.message.from_user
-        update_user_activity(context, user.id)
-        logger.log_user_action(user, "viewed about")
 
     except Exception as e:
         print(f"Error in about command: {e}")
@@ -1065,6 +1080,12 @@ async def about_cmd(update: Update, context: CallbackContext):
             "❌ Не удалось получить информацию о библиотеке",
             parse_mode=ParseMode.HTML
         )
+
+    await log_stats(context)
+
+    user = update.message.from_user
+    # update_user_activity(context, user.id)
+    logger.log_user_action(user, "viewed about")
 
 
 async def news_cmd(update: Update, context: CallbackContext):
@@ -1099,7 +1120,7 @@ async def news_cmd(update: Update, context: CallbackContext):
 
         # Логируем действие
         user = update.message.from_user
-        update_user_activity(context, user.id)
+        # update_user_activity(context, user.id)
         logger.log_user_action(user, "viewed news")
 
     except Exception as e:
@@ -1111,6 +1132,7 @@ async def news_cmd(update: Update, context: CallbackContext):
 
 
 # ===== РЕЙТИНГ КНИГ =====
+
 # Добавим функцию для получения эмодзи рейтинга
 def get_rating_emoji(rating):
     """Возвращает эмодзи для рейтинга"""
@@ -1232,28 +1254,7 @@ async def handle_group_message(update: Update, context: CallbackContext):
             reply_to_message_id=update.message.message_id
         )
 
-
-def is_message_for_bot(message_text, bot_username):
-    """Проверяет, обращается ли пользователь к боту"""
-    if not bot_username:
-        return False
-
-    # Проверяем упоминание бота в начале сообщения
-    return (message_text.startswith(f'@{bot_username}')
-            # or message_text.startswith(f'/search@{bot_username}')
-        )
-
-
-def extract_clean_query(message_text, bot_username):
-    """Извлекает чистый поисковый запрос из сообщения"""
-    if not bot_username:
-        return message_text.strip()
-
-    # Убираем упоминание бота
-    clean_text = message_text.replace(f'@{bot_username}', '').strip()
-    #clean_text = clean_text.replace(f'/search@{bot_username}', '').strip()
-
-    return clean_text
+    await log_stats(context)
 
 
 async def handle_group_search(update: Update, context: CallbackContext, user, query):
@@ -1307,8 +1308,9 @@ async def handle_group_search(update: Update, context: CallbackContext, user, qu
                     PAGES_OF_BOOKS: pages_of_books,
                     FOUND_BOOKS_COUNT: found_books_count,
                     USER_PARAMS: user_params,
-                    'query': query
-                    # 'user': user
+                    # 'user': user,
+                    'query': query,
+                    'last_activity': datetime.now()
                 }
 
                 # Отправляем результаты поиска
@@ -1325,7 +1327,7 @@ async def handle_group_search(update: Update, context: CallbackContext, user, qu
                 reply_to_message_id=update.message.message_id
             )
 
-        logger.log_user_action(user, "searched in group", f"{query}; count:{found_books_count}; chat:{chat.id}")
+        logger.log_user_action(user, "searched in group", f"{query}; count:{found_books_count}; chat:{chat.title}")
 
     except Exception as e:
         print(f"Ошибка при обработке поиска из группы: {e}")
@@ -1356,6 +1358,8 @@ async def handle_group_callback(query, context, action, params, user):
         await handle_group_page_change(query, context, action, params, user, search_context_key)
     else:
         await query.edit_message_text("❌ Это действие недоступно в группе")
+
+    await log_stats(context)
 
 
 async def handle_group_page_change(query, context, action, params, user, search_context_key):

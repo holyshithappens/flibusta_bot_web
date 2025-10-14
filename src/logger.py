@@ -46,11 +46,11 @@ class SingletonLogger:
         """
         Логирует действие пользователя.
         """
-        info = f"User {user.id} ({user.username}) performed action: {action} {detail}"
+        info = f"User {user.id} ({user.username}) performed action: {action}/{detail}"
 
-        #debug
-        print(info)
-        print(user)
+        # #debug
+        print(f"DEBUG: {info} {detail}")
+        # print(f"DEBUG: {user}")
 
         if self.logger:
             self.logger.info(info)
@@ -61,6 +61,24 @@ class SingletonLogger:
             fullname = (f"{user.first_name}" if user.first_name else '') + (f" {user.last_name}" if user.last_name else '')
             fullname = f"({fullname.strip()})" if fullname.strip() else ''
             self.db_logger.write_user_log(timestamp, user.id, f"{user.username} {fullname}", action, detail)
+
+    def log_system_action(self, action, detail = ''):
+        """
+        Логирует действие пользователя.
+        """
+        info = f"System action: {action}/{detail}"
+
+        # #debug
+        print(f"DEBUG: {info}")
+        # print(user)
+
+        if self.logger:
+            self.logger.info(info)
+
+        if self.db_logger:
+            # Получаем текущее время в формате 'YYYY-MM-DD HH:MM:SS.sssssss'
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Обрезаем до 7 знаков после точки
+            self.db_logger.write_user_log(timestamp, 0, "SYSTEM", action, detail)
 
 # Создаём единственный экземпляр логгера
 logger = SingletonLogger()
