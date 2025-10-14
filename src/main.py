@@ -120,11 +120,12 @@ def main():
     application.add_handler(CommandHandler("langs", langs_cmd))
     application.add_handler(CommandHandler("set", settings_cmd))
     application.add_handler(CommandHandler("donate", donate_cmd))
-    # Обработчик сообщений в боте
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    # Обработчик сообщений в группе
+    # Обработчик ДЛЯ ГРУПП (только группы + сообщения для бота)
     application.add_handler(
-        MessageHandler(filters.ChatType.GROUP & filters.TEXT & ~filters.COMMAND, handle_group_message))
+        MessageHandler(filters.ChatType.GROUP & filters.TEXT, handle_group_message))
+    # Обработчик ДЛЯ ЛИЧНЫХ СООБЩЕНИЙ (только приватные чаты)
+    application.add_handler(
+        MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_message))
     # Обработчик кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
 
