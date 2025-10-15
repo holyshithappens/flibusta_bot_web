@@ -23,6 +23,7 @@ show_usage() {
     echo ""
     echo "Options:"
     echo "  -u, --update    Quick update (pull and restart containers)"
+    echo "  -n, --news      Update only news file"
     echo "  -h, --help      Show this help message"
     echo ""
     echo "Without options: Full deployment (build and deploy)"
@@ -59,6 +60,16 @@ EOF
     #scp data/FlibustaLogs.sqlite $VPS_USER@$VPS_IP:$VPS_PATH/data/FlibustaLogs.sqlite
 
     echo "✅ Directories and files setup completed"
+}
+
+copy_news_file() {
+    echo ""
+    echo "📰 Copying news file to VPS..."
+
+    # Копируем файл на VPS
+    scp ./data/bot_news.py $VPS_USER@$VPS_IP:$VPS_PATH/data/bot_news.py
+
+    echo "✅ News file copied successfully"
 }
 
 setup_permissions() {
@@ -155,6 +166,11 @@ case "${1:-}" in
         echo "✅ Quick update completed!"
         ;;
 
+    -n|--news)
+        prompt_user_input_vps
+        copy_news_file
+        ;;
+
     -h|--help)
         show_usage
         ;;
@@ -164,6 +180,7 @@ case "${1:-}" in
         prompt_user_input_vps
         prompt_user_input_docker
         setup_directories_and_files
+        copy_news_file
 #        setup_permissions
         build_and_push_image
         deploy_containers

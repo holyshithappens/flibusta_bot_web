@@ -9,13 +9,14 @@ from telegram.error import TimedOut, BadRequest, Forbidden
 from telegram.ext import CallbackContext #, ConversationHandler
 
 from database import DatabaseBooks, DatabaseSettings
-from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, BOT_NEWS, \
+from constants import FLIBUSTA_BASE_URL, DEFAULT_BOOK_FORMAT, \
     SETTING_MAX_BOOKS, SETTING_LANG_SEARCH, SETTING_SORT_ORDER, SETTING_SIZE_LIMIT, \
-    SETTING_BOOK_FORMAT, SETTING_SEARCH_TYPE, SETTING_OPTIONS, SETTING_TITLES, SETTING_RATING_FILTER, BOOK_RATINGS
+    SETTING_BOOK_FORMAT, SETTING_SEARCH_TYPE, SETTING_OPTIONS, SETTING_TITLES, SETTING_RATING_FILTER, BOOK_RATINGS, \
+    BOT_NEWS_FILE_PATH
 from health import log_stats
 from utils import format_size, extract_cover_from_fb2, extract_metadata_from_fb2, format_metadata_message, \
     get_platform_recommendations, download_book_with_filename, upload_to_tmpfiles, is_message_for_bot, \
-    extract_clean_query
+    extract_clean_query, get_latest_news
 from logger import logger
 
 
@@ -1091,15 +1092,15 @@ async def about_cmd(update: Update, context: CallbackContext):
 async def news_cmd(update: Update, context: CallbackContext):
     """Команда /news - показывает последние новости бота"""
     try:
-        if not BOT_NEWS:
+        # Загружаем новости из файла
+        latest_news = await get_latest_news(BOT_NEWS_FILE_PATH, count=3)
+
+        if not latest_news:
             await update.message.reply_text(
                 "📢 Пока нет новостей. Следите за обновлениями!",
                 parse_mode=ParseMode.HTML
             )
             return
-
-        # Берем последние 3 новости
-        latest_news = BOT_NEWS[-3:]
 
         news_text = "📢 <b>Последние новости бота:</b>\n\n"
 
@@ -1110,7 +1111,7 @@ async def news_cmd(update: Update, context: CallbackContext):
 
             # Добавляем разделитель между новостями (кроме последней)
             if i < len(latest_news):
-                news_text += "─" * 30 + "\n\n"
+                news_text += "─" * 18 + "\n\n"
 
         await update.message.reply_text(
             news_text,
