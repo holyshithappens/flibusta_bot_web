@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 import base64
 from urllib.parse import unquote #, urljoin, quote
@@ -469,6 +470,10 @@ async def load_bot_news(file_path: str) -> List[Dict[str, Any]]:
     Загружает новости бота из Python файла
     """
     try:
+        # Принудительно удаляем модуль из кэша, если он уже был загружен
+        if "bot_news" in sys.modules:
+            del sys.modules["bot_news"]
+
         # Динамически импортируем модуль с новостями
         spec = importlib.util.spec_from_file_location("bot_news", file_path)
         news_module = importlib.util.module_from_spec(spec)
