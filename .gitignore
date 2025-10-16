@@ -2,8 +2,9 @@
 .env.vps
 .env
 
-# Папки с данными и бэкапами
-/data/
+# БД и папки с бэкапами
+/data/*.hlc2
+/data/*.sqlite
 /backups/
 /logs/
 

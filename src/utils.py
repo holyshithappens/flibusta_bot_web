@@ -1,11 +1,14 @@
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 import base64
 from urllib.parse import unquote #, urljoin, quote
 import aiohttp
 import chardet
 #from bs4 import BeautifulSoup
+import importlib.util
+from typing import List, Dict, Any
 
 from constants import CRITERIA_PATTERN, CRITERIA_PATTERN_SERIES_QUOTED, FLIBUSTA_DB_BOOKS_PATH  # FLIBUSTA_BASE_URL
 
@@ -469,6 +472,42 @@ def extract_clean_query(message_text, bot_username):
     #clean_text = clean_text.replace(f'/search@{bot_username}', '').strip()
 
     return clean_text
+
+
+# ===== ЗАГРУЗКА НОВОСТЕЙ ИЗ PYTHON ФАЙЛА =====
+
+async def load_bot_news(file_path: str) -> List[Dict[str, Any]]:
+    """
+    Загружает новости бота из Python файла
+    """
+    try:
+        # Принудительно удаляем модуль из кэша, если он уже был загружен
+        if "bot_news" in sys.modules:
+            del sys.modules["bot_news"]
+
+        # Динамически импортируем модуль с новостями
+        spec = importlib.util.spec_from_file_location("bot_news", file_path)
+        news_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(news_module)
+
+        news = getattr(news_module, 'BOT_NEWS', [])
+        print(f"Загружено {len(news)} новостей из {file_path}")
+        return news
+
+    except FileNotFoundError:
+        print(f"Файл новостей {file_path} не найден")
+        return []
+    except Exception as e:
+        print(f"Ошибка загрузки новостей из {file_path}: {e}")
+        return []
+
+
+async def get_latest_news(file_path: str, count: int = 3) -> List[Dict[str, Any]]:
+    """
+    Возвращает последние count новостей
+    """
+    all_news = await load_bot_news(file_path)
+    return all_news[-count:] if all_news else []
 
 
 # async def get_cover_url(book_id: str):
