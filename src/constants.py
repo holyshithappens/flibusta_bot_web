@@ -36,12 +36,13 @@ SEARCH_CRITERIA = {
     "год": "SearchYear",
     "город": "SearchCity",
     "издательство": "SearchPublisher",
+    "рейтинг": "LibRate",
     "полный": "FullSearch"
 }
 
 # Регулярное выражение для извлечения критериев
 CRITERIA_PATTERN_SERIES_QUOTED = r"(серия)\s*:\s*('[^']*'|\"[^\"]*\")"
-CRITERIA_PATTERN = r"(автор|название|жанр|язык|серия|год|город|издательство|полный)\s*:\s*([^,;\n]+)"
+CRITERIA_PATTERN = r"(автор|название|жанр|язык|серия|год|город|издательство|рейтинг|полный)\s*:\s*([^,;\n]+)"
 
 # Константы для типов настроек
 SETTING_MAX_BOOKS = 'max_books'
