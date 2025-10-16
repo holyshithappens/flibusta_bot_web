@@ -394,11 +394,8 @@ async def settings_cmd(update: Update, context: CallbackContext):
 async def handle_message(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг или серий)"""
     try:
-        # user = update.effective_user
-        # update_user_activity(context, user.id)
-
+        # Обрабатываем новый запрос
         search_type = context.user_data.get(SETTING_SEARCH_TYPE, 'books')
-
         if search_type == 'series':
             await handle_search_series(update, context)
         else:
@@ -418,10 +415,25 @@ async def handle_message(update: Update, context: CallbackContext):
 
 async def handle_search_books(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг)"""
-    query = update.message.text
-    user = update.message.from_user
+    # ОПРЕДЕЛЯЕМ ТИП СООБЩЕНИЯ
+    is_edited = update.edited_message is not None
+    message = update.edited_message if is_edited else update.message
+    query_text = message.text
+    user = message.from_user
 
-    processing_msg = await update.message.reply_text(
+    # ЕСЛИ СООБЩЕНИЕ ОТРЕДАКТИРОВАНО - УДАЛЯЕМ ПРЕДЫДУЩИЙ РЕЗУЛЬТАТ
+    if is_edited:
+        last_bot_message_id = context.user_data.get('last_bot_message_id')
+        if last_bot_message_id:
+            try:
+                await context.bot.delete_message(
+                    chat_id=message.chat_id,
+                    message_id=last_bot_message_id
+                )
+            except Exception as e:
+                print(f"Не удалось удалить старое сообщение: {e}")
+
+    processing_msg = await message.reply_text(
         "⏰ <i>Ищу книги, ожидайте...</i>",
         parse_mode=ParseMode.HTML,
         disable_notification=True
@@ -434,7 +446,7 @@ async def handle_search_books(update: Update, context: CallbackContext):
     context.user_data[SEARCH_CONTEXT] = SEARCH_TYPE_BOOKS  # Сохраняем контекст
 
     books, found_books_count = DB_BOOKS.search_books(
-        query, user_params.MaxBooks, user_params.Lang,
+        query_text, user_params.MaxBooks, user_params.Lang,
         user_params.DateSortOrder, size_limit, rating_filter
     )
 
@@ -449,24 +461,43 @@ async def handle_search_books(update: Update, context: CallbackContext):
         reply_markup = InlineKeyboardMarkup(keyboard)
         if reply_markup:
             header_found_text = form_header_books(page, user_params.MaxBooks, found_books_count)
-            await update.message.reply_text(header_found_text, reply_markup=reply_markup)
+            result_message = await message.reply_text(header_found_text, reply_markup=reply_markup)
 
         context.user_data[BOOKS] = books
         context.user_data[PAGES_OF_BOOKS] = pages_of_books
         context.user_data[FOUND_BOOKS_COUNT] = found_books_count
         context.user_data['last_activity'] = datetime.now()  # Сохраняем время поиска
     else:
-        await update.message.reply_text("😞 Не нашёл подходящих книг. Попробуйте другие критерии поиска")
+        result_message = await message.reply_text("😞 Не нашёл подходящих книг. Попробуйте другие критерии поиска")
 
-    logger.log_user_action(user, "searched for books", f"{query}; count:{found_books_count}")
+    # СОХРАНЯЕМ ID СООБЩЕНИЯ С РЕЗУЛЬТАТАМИ И ЗАПРОС
+    context.user_data['last_bot_message_id'] = result_message.message_id
+    context.user_data['last_search_query'] = query_text
+
+    logger.log_user_action(user, "searched for books", f"{query_text}; count:{found_books_count}")
 
 
 async def handle_search_series(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения (поиск книг)"""
-    query_text = update.message.text
-    user = update.message.from_user
+    # ОПРЕДЕЛЯЕМ ТИП СООБЩЕНИЯ
+    is_edited = update.edited_message is not None
+    message = update.edited_message if is_edited else update.message
+    query_text = message.text
+    user = message.from_user
 
-    processing_msg = await update.message.reply_text(
+    # ЕСЛИ СООБЩЕНИЕ ОТРЕДАКТИРОВАНО - УДАЛЯЕМ ПРЕДЫДУЩИЙ РЕЗУЛЬТАТ
+    if is_edited:
+        last_bot_message_id = context.user_data.get('last_bot_message_id')
+        if last_bot_message_id:
+            try:
+                await context.bot.delete_message(
+                    chat_id=message.chat_id,
+                    message_id=last_bot_message_id
+                )
+            except Exception as e:
+                print(f"Не удалось удалить старое сообщение: {e}")
+
+    processing_msg = await message.reply_text(
         "⏰ <i>Ищу книжные серии, ожидайте...</i>",
         parse_mode=ParseMode.HTML,
         disable_notification=True
@@ -494,7 +525,7 @@ async def handle_search_series(update: Update, context: CallbackContext):
 
         if reply_markup:
             header_found_text = form_header_books(page, user_params.MaxBooks, found_series_count, 'серий')
-            await update.message.reply_text(header_found_text, reply_markup=reply_markup)
+            result_message = await message.reply_text(header_found_text, reply_markup=reply_markup)
 
         context.user_data[SERIES] = series
         context.user_data[PAGES_OF_SERIES] = pages_of_series
@@ -503,7 +534,11 @@ async def handle_search_series(update: Update, context: CallbackContext):
         context.user_data['last_series_page'] = page  # Сохраняем текущую страницу
         context.user_data['last_activity'] = datetime.now()  # Сохраняем время поиска
     else:
-        await update.message.reply_text("😞 Не нашёл подходящих книжных серий. Попробуйте другие критерии поиска")
+        result_message = await message.reply_text("😞 Не нашёл подходящих книжных серий. Попробуйте другие критерии поиска")
+
+    # СОХРАНЯЕМ ID СООБЩЕНИЯ С РЕЗУЛЬТАТАМИ И ЗАПРОС
+    context.user_data['last_bot_message_id'] = result_message.message_id
+    context.user_data['last_search_query'] = query_text
 
     logger.log_user_action(user, "searched for series", f"{query_text}; count:{found_series_count}")
 

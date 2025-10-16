@@ -49,7 +49,7 @@ class SingletonLogger:
         info = f"User {user.id} ({user.username}) performed action: {action}/{detail}"
 
         # #debug
-        print(f"DEBUG: {info} {detail}")
+        print(f"DEBUG: {info}")
         # print(f"DEBUG: {user}")
 
         if self.logger:
