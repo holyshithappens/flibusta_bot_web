@@ -1061,6 +1061,7 @@ async def about_cmd(update: Update, context: CallbackContext):
 📞 <b>Обратная связь:</b>
 • 📧 Email: <code>{CONTACT_INFO['email']}</code>
 • 🎮 Пикабу: <a href="{CONTACT_INFO['pikabu']}">{CONTACT_INFO['pikabu_username']}</a>
+• 📢 ТГ-канал: https://t.me/FlibustaBotNews
 
 🛠 <b>Технологии:</b>
 • Python 3.11
