@@ -126,7 +126,7 @@ def extract_criteria(text):
         return []
 
     #debug
-    print(all_matches)
+    print(f"DEBUG: all_matches: {all_matches}")
 
     # Определяем позицию первого и последнего критерия
     first_match_start = all_matches[0].start()
@@ -158,6 +158,17 @@ def extract_criteria(text):
     for criterion, value in criteria_values:
         criterion = criterion.lower()
         value = value.strip()
+
+        # ОСОБАЯ ОБРАБОТКА ДЛЯ КРИТЕРИЯ "РЕЙТИНГ"
+        if criterion == 'рейтинг':
+            # Обрабатываем цифры рейтинга (например: 012, 45, 5 и т.д.)
+            if value.isdigit():
+                # Преобразуем строку цифр в список отдельных рейтингов
+                ratings = list(set(value))  # Убираем дубликаты
+                for rating in ratings:
+                    if rating in '012345':  # Проверяем валидность рейтинга
+                        results.append((criterion, rating, '=', 'OR' if len(ratings) > 1 else 'AND'))
+            continue  # Пропускаем обычную обработку для рейтинга
 
         # Особая обработка для критерия "серия" с кавычками
         if criterion == 'серия' and (value.startswith('"') and value.endswith('"') or
