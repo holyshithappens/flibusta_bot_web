@@ -1297,9 +1297,9 @@ async def handle_group_search(update: Update, context: CallbackContext):
         clean_query_text = extract_clean_query(message.text, context.bot.username)
 
         if not clean_query_text:
-            await update.message.reply_text(
+            await message.reply_text(
                 "❌ Пожалуйста, укажите поисковый запрос после упоминания бота",
-                reply_to_message_id=update.message.message_id
+                reply_to_message_id=message.message_id
             )
             return
 
