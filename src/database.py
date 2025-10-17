@@ -196,8 +196,52 @@ class DatabaseLogs(Database):
 
             conn.commit()
 
-    def get_user_stats_summary(self):
-        """Возвращает общую статистику пользователей"""
+
+    def get_user_stats_period(self, days):
+        """Возвращает статистику пользователей за указанный период в днях"""
+        with self.connect() as conn:
+            cursor = conn.cursor()
+
+            # Новые пользователи за период
+            cursor.execute("""
+                SELECT COUNT(*) AS NewUsers
+                FROM (
+                    SELECT UserID, MIN(Timestamp) AS FirstSeen
+                    FROM UserLog
+                    GROUP BY UserID
+                    HAVING date(FirstSeen) >= date('now', ?)
+                )
+            """, (f'-{days} days',))
+            new_users = cursor.fetchone()[0]
+
+            # Активные пользователи за период
+            cursor.execute("""
+                SELECT COUNT(DISTINCT UserID) AS ActiveUsers
+                FROM UserLog
+                WHERE date(Timestamp) >= date('now', ?)
+            """, (f'-{days} days',))
+            active_users = cursor.fetchone()[0]
+
+            # Количество поисков и скачиваний за период
+            cursor.execute("""
+                SELECT 
+                    SUM(CASE WHEN Action LIKE 'searched%' THEN 1 ELSE 0 END) AS TotalSearches,
+                    SUM(CASE WHEN Action = 'send file' THEN 1 ELSE 0 END) AS TotalDownloads
+                FROM UserLog
+                WHERE date(Timestamp) >= date('now', ?)
+            """, (f'-{days} days',))
+            searches, downloads = cursor.fetchone()
+
+            return {
+                'new_users': new_users,
+                'active_users': active_users,
+                'searches': searches or 0,
+                'downloads': downloads or 0
+            }
+
+
+    def get_user_stats_total(self):
+        """Возвращает общую статистику пользователей за всё время"""
         with self.connect() as conn:
             cursor = conn.cursor()
 
@@ -205,43 +249,48 @@ class DatabaseLogs(Database):
             cursor.execute("SELECT COUNT(DISTINCT UserID) AS TotalUniqueUsers FROM UserLog")
             total_users = cursor.fetchone()[0]
 
-            # Новые пользователи за неделю
-            cursor.execute("""
-                SELECT COUNT(*) AS NewUsers
-                FROM (
-                    SELECT UserID, MIN(Timestamp) AS FirstSeen
-                    FROM UserLog
-                    GROUP BY UserID
-                    HAVING date(FirstSeen) >= date('now', '-7 days')
-                )
-            """)
-            new_users_week = cursor.fetchone()[0]
+            # Активные пользователи всего (кто был активен хотя бы раз)
+            cursor.execute("SELECT COUNT(DISTINCT UserID) AS ActiveUsersTotal FROM UserLog")
+            active_users_total = cursor.fetchone()[0]
 
-            # Активные пользователи за неделю
-            cursor.execute("""
-                SELECT COUNT(DISTINCT UserID) AS ActiveUsers
-                FROM UserLog
-                WHERE date(Timestamp) >= date('now', '-7 days')
-            """)
-            active_users_week = cursor.fetchone()[0]
-
-            # Количество поисков и скачиваний за неделю
+            # Количество поисков и скачиваний всего
             cursor.execute("""
                 SELECT 
-                    SUM(CASE WHEN Action LIKE 'searched for%' THEN 1 ELSE 0 END) AS TotalSearches,
+                    SUM(CASE WHEN Action LIKE 'searched%' THEN 1 ELSE 0 END) AS TotalSearches,
                     SUM(CASE WHEN Action = 'send file' THEN 1 ELSE 0 END) AS TotalDownloads
                 FROM UserLog
-                WHERE date(Timestamp) >= date('now', '-7 days')
             """)
-            searches, downloads = cursor.fetchone()
+            searches_total, downloads_total = cursor.fetchone()
 
             return {
                 'total_users': total_users,
-                'new_users_week': new_users_week,
-                'active_users_week': active_users_week,
-                'searches_week': searches or 0,
-                'downloads_week': downloads or 0
+                'active_users_total': active_users_total,
+                'searches_total': searches_total or 0,
+                'downloads_total': downloads_total or 0
             }
+
+
+    def get_user_stats_summary(self):
+        """Возвращает общую статистику пользователей"""
+        stats_week = self.get_user_stats_period(7)
+        stats_month = self.get_user_stats_period(30)
+        stats_total = self.get_user_stats_total()
+
+        return {
+            'total_users': stats_total['total_users'],
+            'new_users_week': stats_week['new_users'],
+            'active_users_week': stats_week['active_users'],
+            'searches_week': stats_week['searches'],
+            'downloads_week': stats_week['downloads'],
+            'new_users_month': stats_month['new_users'],
+            'active_users_month': stats_month['active_users'],
+            'searches_month': stats_month['searches'],
+            'downloads_month': stats_month['downloads'],
+            'active_users_total': stats_total['active_users_total'],
+            'searches_total': stats_total['searches_total'],
+            'downloads_total': stats_total['downloads_total']
+        }
+
 
     def get_users_list(self, limit=50, offset=0):
         """Возвращает список пользователей с основной информацией"""

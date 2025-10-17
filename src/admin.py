@@ -311,12 +311,33 @@ async def admin_system(update: Update, context: CallbackContext):
     if not is_admin(update.effective_user.id):
         return
 
-    # TODO: реализовать системные команды
-    await update.message.reply_text(
-        "⚙️ <b>Системные команды</b>\n\n"
-        "Функция в разработке...",
-        parse_mode=ParseMode.HTML
-    )
+    # Получаем системную статистику
+    from health import get_system_stats, get_memory_usage
+    stats = get_system_stats()
+
+    # Получаем информацию о текущих админских сессиях
+    active_admins = len([uid for uid in admin_sessions if admin_sessions[uid]["admin_until"] > time.time()])
+    cleaned_sessions = cleanup_expired_sessions()
+
+    system_text = f"""
+⚙️ <b>Системная информация</b>
+
+<b>Память:</b>
+• Используется процессом: <code>{stats['memory_used']} MB</code>
+• Используется системой: <code>{stats['memory_percent']}%</code>
+• Загрузка CPU: <code>{stats['cpu_percent']}%</code>
+
+<b>Процесс:</b>
+• Открытых файлов: <code>{stats['open_files']}</code>
+• Потоков: <code>{stats['threads']}</code>
+• Время: <code>{stats['timestamp']}</code>
+
+<b>Админские сессии:</b>
+• Активных сессий: <code>{active_admins}</code>
+• Очищено просроченных: <code>{cleaned_sessions}</code>
+"""
+
+    await update.message.reply_text(system_text, parse_mode=ParseMode.HTML)
 
 
 async def admin_user_stats(update: Update, context: CallbackContext, from_callback=False):
@@ -326,6 +347,7 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
         user = query.from_user
         message_func = query.edit_message_text
     else:
+        query = update.callback_query
         user = update.effective_user
         message_func = update.message.reply_text
 
@@ -346,21 +368,20 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
 📈 <b>Статистика пользователей</b>
 
 👥 <b>Общая статистика:</b>
-• Всего пользователей: <code>{stats['total_users']:,}</code>
-• Новых за неделю: <code>{stats['new_users_week']:,}</code>
-• Активных за неделю: <code>{stats['active_users_week']:,}</code>
+• Новых за неделю, месяц, всего: <code>{stats['new_users_week']:,}, {stats['new_users_month']:,}, {stats['total_users']:,}</code>
+• Активных за неделю, месяц, всего: <code>{stats['active_users_week']:,}, {stats['active_users_month']:,}, {stats['active_users_total']:,}</code>
 
-📊 <b>Активность за неделю:</b>
-• Поисковых запросов: <code>{stats['searches_week']:,}</code>
-• Скачиваний книг: <code>{stats['downloads_week']:,}</code>
+📊 <b>Активность</b>
+• Поисковых запросов за неделю, месяц, всего: <code>{stats['searches_week']:,}, {stats['searches_month']:,}, {stats['searches_total']:,}</code>
+• Скачиваний книг за неделю, месяц, всего: <code>{stats['downloads_week']:,}, {stats['downloads_month']:,}, {stats['downloads_total']:,}</code>
 
 📅 <b>Статистика по дням (последние 7 дней):</b>
 """
 
     # Добавляем статистику по дням в виде таблицы
     stats_text += "\n<pre>"
-    stats_text += "Дата       | Новые | Активные | Поиски | Скачивания\n"
-    stats_text += "───────────┼───────┼──────────┼────────┼───────────\n"
+    stats_text += "Дата      | Новые | Активные | Поиски | Скачивания\n"
+    stats_text += "──────────┼───────┼──────────┼────────┼───────────\n"
 
     for i in range(len(daily_stats['dates'])):
         date = daily_stats['dates'][i]
@@ -375,37 +396,6 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
         stats_text += f"{date_formatted:9} | {new_users:5} | {active_users:8} | {searches:6} | {downloads:9}\n"
 
     stats_text += "</pre>"
-
-    # Добавляем графики в виде emoji-визуализации
-    stats_text += "\n📊 <b>Визуализация активности:</b>\n\n"
-
-    # График новых пользователей
-    max_new = max(daily_stats['new_users']) or 1
-    stats_text += "👥 Новые пользователи:\n"
-    for count in daily_stats['new_users']:
-        bar_length = int((count / max_new) * 10)
-        stats_text += "🟢" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
-
-    # График активных пользователей
-    max_active = max(daily_stats['active_users']) or 1
-    stats_text += "\n🔥 Активные пользователи:\n"
-    for count in daily_stats['active_users']:
-        bar_length = int((count / max_active) * 10)
-        stats_text += "🔵" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
-
-    # График поисков
-    max_searches = max(daily_stats['searches']) or 1
-    stats_text += "\n🔍 Поисковые запросы:\n"
-    for count in daily_stats['searches']:
-        bar_length = int((count / max_searches) * 10)
-        stats_text += "🟡" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
-
-    # График скачиваний
-    max_downloads = max(daily_stats['downloads']) or 1
-    stats_text += "\n📥 Скачивания книг:\n"
-    for count in daily_stats['downloads']:
-        bar_length = int((count / max_downloads) * 10)
-        stats_text += "🟣" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
 
     # Кнопки действий
     keyboard = [

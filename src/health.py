@@ -16,9 +16,9 @@ def get_memory_usage():
 def get_system_stats():
     """Возвращает системную статистику"""
     return {
-        'memory_used': get_memory_usage(),
-        'memory_percent': psutil.virtual_memory().percent,
-        'cpu_percent': psutil.cpu_percent(interval=1),
+        'memory_used': f"{get_memory_usage():.1f}",
+        'memory_percent': f"{psutil.virtual_memory().percent:.1f}",
+        'cpu_percent': f"{psutil.cpu_percent(interval=1):.1f}",
         'open_files': len(psutil.Process().open_files()),
         'threads': psutil.Process().num_threads(),
         'timestamp': datetime.now().isoformat()

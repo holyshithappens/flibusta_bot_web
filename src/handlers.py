@@ -677,6 +677,14 @@ async def button_callback(update: Update, context: CallbackContext):
         # Для групп используем отдельную логику с привязкой к пользователю
         await handle_group_callback(query, context, action, params, user)
     else:
+        # Сначала проверяем АДМИНСКИЕ действия
+        if action in ['users_list', 'user_detail', 'toggle_block', 'recent_searches',
+                      'recent_downloads', 'top_downloads', 'top_searches', 'back_to_stats',
+                      'refresh_stats']:
+            # Перенаправляем в админский обработчик
+            from admin import handle_admin_callback
+            await handle_admin_callback(update, context)
+            return
         # Существующая логика для личных сообщений
         await handle_private_callback(query, context, action, params)
 
@@ -684,15 +692,6 @@ async def button_callback(update: Update, context: CallbackContext):
 
 
 async def handle_private_callback(query, context, action, params):
-    # # Сначала проверяем АДМИНСКИЕ действия
-    # if action in ['users_list', 'user_detail', 'toggle_block', 'recent_searches',
-    #              'recent_downloads', 'top_downloads', 'top_searches', 'back_to_stats',
-    #              'refresh_stats']:
-    #     # Перенаправляем в админский обработчик
-    #     from admin import handle_admin_callback
-    #     await handle_admin_callback(update, context)
-    #     return
-
     # Затем проверяем ПОЛЬЗОВАТЕЛЬСКИЕ действия
     action_handlers = {
         'send_file': handle_send_file,
@@ -1378,7 +1377,7 @@ async def handle_group_search(update: Update, context: CallbackContext):
                 'last_bot_message_id': result_message.message_id
             }
 
-        logger.log_user_action(user, "searched in group", f"{clean_query_text}; count:{found_books_count}; chat:{chat.title}")
+        logger.log_user_action(user, "searched for books in group", f"{clean_query_text}; count:{found_books_count}; chat:{chat.title}")
 
     except Exception as e:
         print(f"Ошибка при обработке поиска из группы: {e}")
