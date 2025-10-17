@@ -75,10 +75,11 @@ class SingletonLogger:
         if self.logger:
             self.logger.info(info)
 
-        if self.db_logger:
-            # Получаем текущее время в формате 'YYYY-MM-DD HH:MM:SS.sssssss'
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Обрезаем до 7 знаков после точки
-            self.db_logger.write_user_log(timestamp, 0, "SYSTEM", action, detail)
+        # НЕ ПИШЕМ В БД СИСТЕМНЫЕ СООБЩЕНИЯ, ТОЛЬКО В ФАЙЛ
+        # if self.db_logger:
+        #     # Получаем текущее время в формате 'YYYY-MM-DD HH:MM:SS.sssssss'
+        #     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Обрезаем до 7 знаков после точки
+        #     self.db_logger.write_user_log(timestamp, 0, "SYSTEM", action, detail)
 
 # Создаём единственный экземпляр логгера
 logger = SingletonLogger()
