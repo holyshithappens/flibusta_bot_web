@@ -3,18 +3,27 @@
 # Пути к базам данных и файлам
 #CONNECT_DB_AUX = "/media/sf_FlibustaBot/FlibustaAux.sqlite"
 #PREFIX_FILE_PATH = "/media/sf_FlibustaFiles/" #WEB
-PREFIX_FILE_PATH = "./data"
 #PREFIX_WORK_PATH = "/media/sf_FlibustaBot/"
 #PREFIX_LOG_PATH = f"{PREFIX_WORK_PATH}/logs"
 #PREFIX_TMP_PATH = f"{PREFIX_WORK_PATH}/tmp"
 #DEFAULT_PATH_DB_BOOKS = "./data/Flibusta_FB2_local.hlc2"
 #DEFAULT_PATH_DB_SETTINGS = "./data/FlibustaSettings.sqlite"
 #DEFAULT_PATH_DB_LOGS = "./data/FlibustaLogs.sqlite"
+PREFIX_FILE_PATH = "./data"
+PREFIX_TMP_PATH = "./tmp"  # путь для временных файлов и резервных копий
+FLIBUSTA_LOG_PATH = './logs'
 
 FLIBUSTA_DB_BOOKS_PATH = f"{PREFIX_FILE_PATH}/Flibusta_FB2_local.hlc2"
-FLIBUSTA_LOG_PATH = './logs'
 FLIBUSTA_DB_SETTINGS_PATH = f"{PREFIX_FILE_PATH}/FlibustaSettings.sqlite"
 FLIBUSTA_DB_LOGS_PATH = f"{PREFIX_FILE_PATH}/FlibustaLogs.sqlite"
+
+# пути для резервных копий
+BACKUP_TMP_PATH = PREFIX_TMP_PATH
+BACKUP_DB_FILES = [
+    FLIBUSTA_DB_SETTINGS_PATH,
+    FLIBUSTA_DB_LOGS_PATH
+]
+BACKUP_LOG_PATTERN = f"{FLIBUSTA_LOG_PATH}/*log*"
 
 # Максимальное количество книг для поиска, это же значение задано по умолчанию для поля UserSettings.MaxBooks
 MAX_BOOKS_SEARCH = 20
