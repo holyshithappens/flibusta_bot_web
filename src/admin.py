@@ -1,4 +1,5 @@
-import datetime
+import zipfile
+from datetime import datetime
 import os
 import time
 
@@ -20,7 +21,7 @@ ADMIN_BUTTONS = {
     "admin_user_stats": "📊 Статистика",
     "admin_users": "👥 Пользователи",
     "admin_broadcast": "📢 Рассылка",
-    "admin_logs": "📋 Логи",
+    "admin_backup": "💾 Резервные копии",
     "admin_system": "⚙️ Система",
     "admin_whoami": "👤 Кто я",
     "admin_logout": "🚪 Выход",
@@ -113,7 +114,7 @@ async def show_admin_panel(update: Update, context: CallbackContext):
     # Клавиатура админ-панели
     ADMIN_KEYBOARD = [
         [ADMIN_BUTTONS["admin_user_stats"], ADMIN_BUTTONS["admin_recent_activity"]],
-        [ADMIN_BUTTONS["admin_users"], ADMIN_BUTTONS["admin_logs"]],
+        [ADMIN_BUTTONS["admin_users"], ADMIN_BUTTONS["admin_backup"]],
         [ADMIN_BUTTONS["admin_broadcast"], ADMIN_BUTTONS["admin_system"]],
         [ADMIN_BUTTONS["admin_whoami"], ADMIN_BUTTONS["admin_logout"]]
     ]
@@ -270,17 +271,91 @@ async def admin_broadcast(update: Update, context: CallbackContext):
         )
 
 
-async def admin_logs(update: Update, context: CallbackContext):
-    """Просмотр логов"""
+async def admin_backup(update: Update, context: CallbackContext):
+    """Создание резервных копий БД и логов"""
     if not is_admin(update.effective_user.id):
         return
 
-    # Можно реализовать просмотр последних логов
-    await update.message.reply_text(
-        "📋 <b>Просмотр логов</b>\n\n"
-        "Функция в разработке...",
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text("💾 <b>Создание резервных копий...</b>", parse_mode=ParseMode.HTML)
+
+    try:
+        # Создаем временную директорию если не существует
+        from constants import BACKUP_TMP_PATH, BACKUP_DB_FILES, BACKUP_LOG_PATTERN
+        import glob
+
+        tmp_dir = BACKUP_TMP_PATH
+        os.makedirs(tmp_dir, exist_ok=True)
+
+        # Текущая дата для имен файлов
+        current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # 1. Создаем архив с базами данных
+        db_backup_path = os.path.join(tmp_dir, f"databases_backup_{current_date}.zip")
+
+        db_files_exist = []
+        for db_file in BACKUP_DB_FILES:
+            if os.path.exists(db_file):
+                db_files_exist.append(db_file)
+
+        if db_files_exist:
+            with zipfile.ZipFile(db_backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for db_file in db_files_exist:
+                    zipf.write(db_file, os.path.basename(db_file))
+            db_size = os.path.getsize(db_backup_path)
+        else:
+            db_backup_path = None
+            db_size = 0
+
+        # 2. Создаем архив с логами
+        logs_backup_path = os.path.join(tmp_dir, f"logs_backup_{current_date}.zip")
+        log_files = glob.glob(BACKUP_LOG_PATTERN)
+
+        if log_files:
+            with zipfile.ZipFile(logs_backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for log_file in log_files:
+                    zipf.write(log_file, os.path.basename(log_file))
+            logs_size = os.path.getsize(logs_backup_path)
+        else:
+            logs_backup_path = None
+            logs_size = 0
+
+        # Формируем отчет
+        backup_text = f"""
+💾 <b>Резервные копии созданы</b>
+
+<b>Базы данных:</b>
+{chr(10).join([f'• {os.path.basename(db)}' for db in db_files_exist]) if db_files_exist else '• Файлы БД не найдены'}
+• Размер архива: {db_size / 1024:.1f} KB
+
+<b>Логи:</b>
+• Найдено файлов: {len(log_files)}
+• Размер архива: {logs_size / 1024:.1f} KB
+"""
+
+        # Отправляем файлы если они созданы
+        if db_backup_path and os.path.exists(db_backup_path):
+            await update.message.reply_document(
+                document=open(db_backup_path, 'rb'),
+                filename=f"databases_backup_{current_date}.zip",
+                caption="📊 Архив баз данных"
+            )
+            # Удаляем архив после отправки
+            os.remove(db_backup_path)
+
+        if logs_backup_path and os.path.exists(logs_backup_path):
+            await update.message.reply_document(
+                document=open(logs_backup_path, 'rb'),
+                filename=f"logs_backup_{current_date}.zip",
+                caption="📝 Архив логов"
+            )
+            # Удаляем архив после отправки
+            os.remove(logs_backup_path)
+
+        await update.message.reply_text(backup_text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        error_text = f"❌ <b>Ошибка при создании резервных копий:</b>\n{str(e)}"
+        await update.message.reply_text(error_text, parse_mode=ParseMode.HTML)
 
 
 async def admin_logout(update: Update, context: CallbackContext):
@@ -311,12 +386,33 @@ async def admin_system(update: Update, context: CallbackContext):
     if not is_admin(update.effective_user.id):
         return
 
-    # TODO: реализовать системные команды
-    await update.message.reply_text(
-        "⚙️ <b>Системные команды</b>\n\n"
-        "Функция в разработке...",
-        parse_mode=ParseMode.HTML
-    )
+    # Получаем системную статистику
+    from health import get_system_stats, get_memory_usage
+    stats = get_system_stats()
+
+    # Получаем информацию о текущих админских сессиях
+    active_admins = len([uid for uid in admin_sessions if admin_sessions[uid]["admin_until"] > time.time()])
+    cleaned_sessions = cleanup_expired_sessions()
+
+    system_text = f"""
+⚙️ <b>Системная информация</b>
+
+<b>Память:</b>
+• Используется процессом: <code>{stats['memory_used']} MB</code>
+• Используется системой: <code>{stats['memory_percent']}%</code>
+• Загрузка CPU: <code>{stats['cpu_percent']}%</code>
+
+<b>Процесс:</b>
+• Открытых файлов: <code>{stats['open_files']}</code>
+• Потоков: <code>{stats['threads']}</code>
+• Время: <code>{stats['timestamp']}</code>
+
+<b>Админские сессии:</b>
+• Активных сессий: <code>{active_admins}</code>
+• Очищено просроченных: <code>{cleaned_sessions}</code>
+"""
+
+    await update.message.reply_text(system_text, parse_mode=ParseMode.HTML)
 
 
 async def admin_user_stats(update: Update, context: CallbackContext, from_callback=False):
@@ -326,6 +422,7 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
         user = query.from_user
         message_func = query.edit_message_text
     else:
+        query = update.callback_query
         user = update.effective_user
         message_func = update.message.reply_text
 
@@ -346,21 +443,20 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
 📈 <b>Статистика пользователей</b>
 
 👥 <b>Общая статистика:</b>
-• Всего пользователей: <code>{stats['total_users']:,}</code>
-• Новых за неделю: <code>{stats['new_users_week']:,}</code>
-• Активных за неделю: <code>{stats['active_users_week']:,}</code>
+• Новых за неделю, месяц, всего: <code>{stats['new_users_week']:,}, {stats['new_users_month']:,}, {stats['total_users']:,}</code>
+• Активных за неделю, месяц, всего: <code>{stats['active_users_week']:,}, {stats['active_users_month']:,}, {stats['active_users_total']:,}</code>
 
-📊 <b>Активность за неделю:</b>
-• Поисковых запросов: <code>{stats['searches_week']:,}</code>
-• Скачиваний книг: <code>{stats['downloads_week']:,}</code>
+📊 <b>Активность</b>
+• Поисковых запросов за неделю, месяц, всего: <code>{stats['searches_week']:,}, {stats['searches_month']:,}, {stats['searches_total']:,}</code>
+• Скачиваний книг за неделю, месяц, всего: <code>{stats['downloads_week']:,}, {stats['downloads_month']:,}, {stats['downloads_total']:,}</code>
 
 📅 <b>Статистика по дням (последние 7 дней):</b>
 """
 
     # Добавляем статистику по дням в виде таблицы
     stats_text += "\n<pre>"
-    stats_text += "Дата       | Новые | Активные | Поиски | Скачивания\n"
-    stats_text += "───────────┼───────┼──────────┼────────┼───────────\n"
+    stats_text += "Дата      | Новые | Активные | Поиски | Скачивания\n"
+    stats_text += "──────────┼───────┼──────────┼────────┼───────────\n"
 
     for i in range(len(daily_stats['dates'])):
         date = daily_stats['dates'][i]
@@ -375,37 +471,6 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
         stats_text += f"{date_formatted:9} | {new_users:5} | {active_users:8} | {searches:6} | {downloads:9}\n"
 
     stats_text += "</pre>"
-
-    # Добавляем графики в виде emoji-визуализации
-    stats_text += "\n📊 <b>Визуализация активности:</b>\n\n"
-
-    # График новых пользователей
-    max_new = max(daily_stats['new_users']) or 1
-    stats_text += "👥 Новые пользователи:\n"
-    for count in daily_stats['new_users']:
-        bar_length = int((count / max_new) * 10)
-        stats_text += "🟢" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
-
-    # График активных пользователей
-    max_active = max(daily_stats['active_users']) or 1
-    stats_text += "\n🔥 Активные пользователи:\n"
-    for count in daily_stats['active_users']:
-        bar_length = int((count / max_active) * 10)
-        stats_text += "🔵" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
-
-    # График поисков
-    max_searches = max(daily_stats['searches']) or 1
-    stats_text += "\n🔍 Поисковые запросы:\n"
-    for count in daily_stats['searches']:
-        bar_length = int((count / max_searches) * 10)
-        stats_text += "🟡" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
-
-    # График скачиваний
-    max_downloads = max(daily_stats['downloads']) or 1
-    stats_text += "\n📥 Скачивания книг:\n"
-    for count in daily_stats['downloads']:
-        bar_length = int((count / max_downloads) * 10)
-        stats_text += "🟣" * bar_length + "⚪" * (10 - bar_length) + f" {count}\n"
 
     # Кнопки действий
     keyboard = [
