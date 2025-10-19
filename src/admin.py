@@ -466,7 +466,7 @@ async def admin_user_stats(update: Update, context: CallbackContext, from_callba
         downloads = daily_stats['downloads'][i]
 
         # Форматируем дату (только день.месяц)
-        date_formatted = datetime.datetime.strptime(date, '%Y-%m-%d').strftime('%d.%m')
+        date_formatted = datetime.strptime(date, '%Y-%m-%d').strftime('%d.%m')
 
         stats_text += f"{date_formatted:9} | {new_users:5} | {active_users:8} | {searches:6} | {downloads:9}\n"
 

@@ -7,6 +7,7 @@
 /data/*.sqlite
 /backups/
 /logs/
+/tmp/
 
 # Виртуальное окружение
 .venv/
@@ -30,6 +31,6 @@ pip-log.txt
 Thumbs.db
 
 *local*
-db_backup.sh
-db_restore.sh
+db_backup_old.sh
+db_restore_old.sh
 Makefile
